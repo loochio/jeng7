@@ -1,10 +1,8 @@
 /* Game F prototype - 13 Sept 2025
 
 Idea: Recusive level warping
-Inspirations: Coccoon | Patrick's Parabox
-
-Log: 14 Sept 2025
-Inspirations: Inception
+Inspirations: Coccoon | Patrick's Parabox | Inception | Antichamber | Sokaban heros (thekla)
+	Talos Principle
 
 14 Sept 2025 from Moonbase420
 // Dear maintainer: // 
@@ -25,6 +23,8 @@ game_plugin := EnginePlugin.{
 	proc_tick 	= game_tick,
 	proc_render = game_render,
 };
+
+startup_level_name :: "level_01";
 
 game_paused := false;
 game_over := false;
@@ -49,7 +49,7 @@ game_begin :: () {
 	game_over = false;
 	game_paused = false;
 
-	w := world_init("level_01");
+	w := world_init(startup_level_name);
 	for * worlds {
 		if !is_valid(it) continue;
 		world_begin(it);
@@ -97,11 +97,17 @@ game_tick :: (dt : float) {
 
 	// Tick root worlds (ones without a parent)
 	// we start from the negative active world's depth, 
-	// keeping our active world rendered at depth=0
+	// keeping our active world ticked at depth=0
 	for worlds {
 		if !is_valid(*it) continue;
 		if it.parent == null world_tick(*it, dt, -active_world.depth);
 	}
+}
+
+toggle_pause :: () {
+	game_paused = !game_paused;
+	pause_physics = game_paused;
+	play_sound(.Pause);
 }
 
 
@@ -110,6 +116,8 @@ PHYSICS_ITERATIONS :: 1;
 PHYSICS_SLEEP_THRESHOLD :: 0.0001;
 PARTITION_CELL_SIZE :: 75.; // world units, needs to be large enough to cover a collider size
 PARTITION_RANGE :: 1;
+
+pause_physics := false;
 
 is_in_partition_range :: (a0 : *Actor, a1 : *Actor) -> bool {
 	return abs(a0.partition_cell_x - a1.partition_cell_x) <= PARTITION_RANGE 
@@ -126,8 +134,6 @@ get_partition_pos :: (cell_x : s64, cell_y : s64) -> Vector2 {
 get_partition_index_from_world_pos :: (pos : float) -> s64 {
 	return xx (pos / PARTITION_CELL_SIZE);
 }
-
-pause_physics := false;
 
 physics_step :: (using world : *World, dt : float) {
 	if pause_physics return;
@@ -175,25 +181,6 @@ physics_step :: (using world : *World, dt : float) {
 			a.velocity.y = min(0., a.velocity.y + drag);
 		}
 	}
-
-	// trigger checks, damage
-	/*
-	for i : actors_head..actors_tail {
-		a := *actors[i];
-		if !is_valid(a) continue;
-		if a.proc_onoverlap_damage == null continue;
-
-		for j : actors_head..actors_tail {
-			b := *actors[j];
-			if !is_valid(b) continue;
-			if a == b continue;
-			if !is_in_partition_range(a, b) continue;
-
-			if is_overlap(b.position, *b.body, a.position, *a.damage_collider) {
-				a.proc_onoverlap_damage(a,b);
-			}
-		}
-	}*/
 
 	// collision resolution
 	for 0..PHYSICS_ITERATIONS 
@@ -243,16 +230,8 @@ physics_step :: (using world : *World, dt : float) {
 	}
 }
 
-
-toggle_pause :: () {
-	game_paused = !game_paused;
-	pause_physics = game_paused;
-	play_sound(.Pause);
-}
-
 game_render :: (dt : float) {
 	clip := BoxFloat.{window_width/2., window_height/2., xx window_width, xx window_height};
-	//pos_in_window := Vector2.{window_width/2., window_height/2.};
 	pos_in_window := Vector2.{0,0};
 	world_render(active_world, 0, clip, pos_in_window);
 
@@ -262,6 +241,8 @@ game_render :: (dt : float) {
 		draw_circle(p, r, r-2, color=CYAN);
 	}
 	
+	//@TODO UI Layout rendering
+
 	draw_text :: (line : s64, format_string: string, args: .. Any) {
 		text := tprint(format_string, ..args);
 		text_width := prepare_text(hud_font, text);
@@ -288,13 +269,6 @@ game_render :: (dt : float) {
 		draw_text(9, "actors=%", count);
 	}
 
-	draw_border :: (color := G_YELLOW, thickness := 100.) {
-		draw_square(.{0,window_height/2.}, .{thickness, xx window_height}, color);
-		draw_square(.{window_width/2.,0}, .{xx window_width, thickness}, color);
-		draw_square(.{window_width/2., xx window_height}, .{xx window_width, thickness}, color);
-		draw_square(.{xx window_width, window_height/2.}, .{thickness, xx window_height}, color);
-	}
-
 	if game_paused {
 		text := "PAUSED";
 		text_width := prepare_text(hud_font, text);
@@ -311,20 +285,20 @@ game_render :: (dt : float) {
 	    draw_prepared_text(hud_font, text_x, xx text_y, G_RED3);
 	}
 
-	debug_draw_pallette :: true;
-	if debug_draw_pallette {
-		draw_pallet();
-	}
+	//@CLEAN
+	//debug_draw_pallette :: true;
+	//if debug_draw_pallette {
+	//	draw_pallet();
+	//}
 }
 
 // ~~~ Worlds ~~~
 World :: struct {
 	using level : Level;
 	flags : WorldFlags;
-	depth := 0.; // level of nesting, float due to transition progress
+	depth := 0.; // nested level, float due to transition progress
 	age := 0.; // relative age, factoring in time dilation
 	parent : *World;
-	//subclip_size := SUBCLIP_SIZE_DEFAULT; @CLEAN
 
 	transition_time := 0.;
 	transition_progress := 0.; //[0-1]
@@ -353,23 +327,24 @@ worlds : [MAX_WORLDS] World;
 MAX_ACTORS_PER_WORLD :: 4096;
 
 active_world : *World;
-game_mouse_pos_world : Vector2;
+//game_mouse_pos_world : Vector2; @TODO not used currently
 
 world_init :: (level_name : string, depth := 0.) -> *World {
 	w : *World;
 	for * worlds {
 		if is_valid(it) continue;
 
+		worlds[it_index] = .{};
 		w = it;
 		w.flags |= .Initialized;
 		w.depth = depth;
-		w.age = 0.;
-		w.parent = null;
-		w.transition_time = 0.;
-		w.actors_head = 0;
-		w.actors_tail = 0;
-		w.hero_spawn_index = 0;
-		w.hero = null;
+		//w.age = 0.; @CLEAN
+		//w.parent = null;
+		//w.transition_time = 0.;
+		//w.actors_head = 0;
+		//w.actors_tail = 0;
+		//w.hero_spawn_index = 0;
+		//w.hero = null;
 		break;
 	}
 	assert(w != null);
@@ -383,7 +358,6 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 		assert(is_valid(it.level_name));
 		world_init(it.level_name, depth+1);
 	}
-
 	return w;
 }
 
@@ -547,6 +521,7 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 		item_pickup(i, new_actor);
 	}
 
+	//@TODO generic proc in the Actor
 	if new_actor.type == {
 		case .Hero; {
 			world.focus = new_actor;
@@ -576,7 +551,7 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 world_tick :: (using world : *World, dt : float, nests := 0.) {
 	assert(is_valid(world));
 
-	// Time dilation, time moves slower in nested worlds (think Inception)
+	// Time dilation, time moves faster in nested worlds (think Inception)
 	pure_dt := dt;
 	nest_scale := get_nest_scale(nests);
 	dt *= 1/nest_scale;
@@ -605,15 +580,10 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 		transition_time -= dt;
 		transition_progress = 1. - transition_time / WORLD_TRANSITION_TIME;
 
-		//@TODO move this into the World
-		//subclip_max := max(window_width*1.25, window_height*1.25);
-		//subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, transition_progress);
-
 		if transition_time <= 0 {
 			assert(transition_progress >= 1., "%", transition_progress);
 			transition_time = 0;
 			transition_progress = 0.;
-			//subclip_size = SUBCLIP_SIZE_DEFAULT;
 			world_enter_end(world);
 		}
 		return;
@@ -644,23 +614,6 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 			destroy(a);
 		}
 
-		/* @TODO redo markers
-    	if a.marker {
-    		assert(xx(a.flags & .Pickupable));
-			a.marker.sprite.visible = false;
-
-			//@OPTIMIZE use spatial partition 
-			//@TODO could generalize this to all actors
-			// but keeping to the Hero for speed
-			h := active_world.hero;
-			assert(h != null);
-			holding := is_holding_item(h);
-			if !holding && is_overlap(a.position, *a.body, h.position, *h.interact_collider){
-				a.marker.sprite.visible = true;
-			}
-		}
-		*/
-
 		for child : a.children {
 			child.position = a.position;
 			child.position += child.relative_position;
@@ -681,7 +634,7 @@ WORLD_NESTED_SCALE :: 0.5;
 WORLD_NESTED_SCALE_VEC :: Vector2.{WORLD_NESTED_SCALE, WORLD_NESTED_SCALE};
 SUBCLIP_SIZE_DEFAULT :: 200.;
 SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
-WORLD_TRANSITION_TIME :: 1.;
+WORLD_TRANSITION_TIME :: 0.25;
 
 get_nest_scale :: (nests := 0.) -> float {
 	return pow(WORLD_NESTED_SCALE, nests);
@@ -746,7 +699,6 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 	}
 
 	// nest scaling, accounting for tranisitons
-	//nscale := get_nest_scale_vec(nests); @CLEAN
 	n := nests - world.transition_progress;
 	nscale := get_nest_scale_vec(n);
 
@@ -778,11 +730,6 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 			pos := vec_world_to_window(a.position, world, n);
 			pos += pos_in_window; // recursively add our pos
 			a.proc_render(a, n, window_clip, pos);
-
-			//@CLEAN old
-			//pos := vec_world_to_window(a.position, world, nests);
-			//pos += pos_in_window; // recursively add our pos
-			//a.proc_render(a, nests, window_clip, pos);
 		}
 	}
 
@@ -792,24 +739,14 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 }
 
 subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_window : Vector2) {
-	// account for tranisition progress for scaling
-	//n := nests - a.world.transition_progress;
-	//nscale := get_nest_scale(n);
-	nscale := get_nest_scale(nests);
-
-	if a.world.transition_progress > 0 {
-		print("world[%] | nscale=% | n=% | prog=%\n", a.world.name,
-			nscale, nests, a.world.transition_progress);
-	}
-
 	// find new clipping box, subdividing our current window_clip
+	nscale := get_nest_scale(nests);
 	subclip : BoxFloat;
 	subclip.x = pos_in_window.x;
 	subclip.y = pos_in_window.y;
 
-	subclip_size := SUBCLIP_SIZE_DEFAULT;
-
 	// only widen this subclip for the target transition entrance
+	subclip_size := SUBCLIP_SIZE_DEFAULT;
 	if a.world.transition_world == a.child_world {
 		subclip_max := max(window_width*1.25, window_height*1.25);
 		subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, a.world.transition_progress);
@@ -854,7 +791,6 @@ WarpSpawner :: struct {
 	level_name : string;
 }
 
-// There's a simple enum serialization example in how_to/013_enums.jai
 level_save :: (level : *Level) {
 	path := tprint("levels/%.level", level.name);
 	builder: String_Builder;
@@ -956,7 +892,7 @@ level_load :: (name : string, level : *Level) -> bool {
 		w.level_name = alloc_string(lvl_name_len);
 		consume_u8_and_length(*buffer, w.level_name.data, lvl_name_len);
 
-		print("load warp: % name=% pos=%\n", w, w.level_name, w.position);
+		print("\tload warp: % name=% pos=%\n", w, w.level_name, w.position);
 	}
 
 	print("LOAD attempt: name=% | spawner_len=% | hero_points=% warps=%\n", level.name, spawner_len, points, level.warps);
@@ -982,7 +918,7 @@ is_valid :: (level : *Level) -> bool {
 	return level.name.count > 0;
 }
 
-// ~~~ end Level ~~~
+// ~~~ Actors ~~~
 
 Actor :: struct {
 	type := ActorType.EMPTY;
@@ -1013,7 +949,7 @@ Actor :: struct {
 	bounce := 0.5; 			// amount we bounce off a collision
 	scale := Vector2.{1,1}; //@TODO do we use this?
 
-	speed := Vector2.{1,1};
+	speed := Vector2.{1,1}; //@TODO duplicate of velocity?
 	interact_collider : Collider;
 	proc_onoverlap_interact : ActorProc_Overlap;
 
@@ -1022,9 +958,6 @@ Actor :: struct {
 	proc_onlifetime_expired : ActorProc;
 
 	held_item : *Actor;
-
-	//@TODO redo marker logic
-	//marker : *Actor;
 
 	children : [..]*Actor;
 	parent : *Actor;
@@ -1069,6 +1002,7 @@ init_actor :: (world : *World) -> *Actor{
 		//reached the end of our static allocs
 		//@TODO I'm not sure what I want to do here yet
 		assert(world.actors_tail < MAX_ACTORS_PER_WORLD);
+
 		a = *world.actors[world.actors_tail];
 		world.actors_tail += 1;
 
@@ -1076,6 +1010,7 @@ init_actor :: (world : *World) -> *Actor{
 			continue;
 		}
 
+		world.actors[world.actors_tail-1] = Actor.{};
 		a.world = world;
 		a.flags |= .Initialized;
 		break;
@@ -1095,9 +1030,10 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 	a.sprite = get_actor_sprite(a.type);
 	a.position = pos;
 
+	//@CLEAN
 	//@TODO this is an error prone list of variables to reset
-	a.lifetime = -1;
-	a.lifetime_dt = 0.;
+	//a.lifetime = -1;
+	//a.lifetime_dt = 0.;
 	
 	if a.type == {
 		case .Hero; {
@@ -1217,35 +1153,34 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 destroy :: (a : *Actor) {
 	deinit_actor(a);
-	a.world = null;
-	a.child_world = null;
 
-	a.proc_begin = null;
-	a.proc_tick = null;
-	a.proc_render = null;
-
-	a.proc_on_interact = null;
-	a.proc_on_dropped = null;
-	a.proc_on_pickup = null;
-	a.proc_onoverlap_interact = null;
-	a.proc_onlifetime_expired = null;
-
-	a.position = .{0,0};
-	a.relative_position = .{0,0};
-	a.prev_position = .{0,0};
-	a.direction = .{0,0};
-	a.velocity = .{0,0};
+	//@CLEAN
+	//a.world = null;
+	//a.child_world = null;
+//
+	//a.proc_begin = null;
+	//a.proc_tick = null;
+	//a.proc_render = null;
+//
+	//a.proc_on_interact = null;
+	//a.proc_on_dropped = null;
+	//a.proc_on_pickup = null;
+	//a.proc_onoverlap_interact = null;
+	//a.proc_onlifetime_expired = null;
+//
+	//a.position = .{0,0};
+	//a.relative_position = .{0,0};
+	//a.prev_position = .{0,0};
+	//a.direction = .{0,0};
+	//a.velocity = .{0,0};
 
 	collider_reset(*a.body);
 	collider_reset(*a.interact_collider);
 
-	a.held_item = null;
-	a.parent = null;
+	//a.held_item = null;
+	//a.parent = null;
 
 	array_reset_keeping_memory(*a.children);
-
-	//@TODO is this a way to reinitialize the entire Actor?
-	//a = Actor.{};
 }
 
 
@@ -1309,7 +1244,6 @@ item_pickup :: (item : *Actor, owner : *Actor) {
 		sfx.user_volume_scale = random_get_within_range(0.15, 0.2);
 		sfx.rate_scale = random_get_within_range(0.7, 0.8); 
 	}
-	
 }
 
 hero_throw_strength := 375.;
