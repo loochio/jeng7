@@ -241,21 +241,6 @@ resize_viewport :: () {
 	window_aspect = window_width / cast(float)window_height;
 }
 
-//@CLEAN
-//camera_reset :: (position :=  Vector2.{0,0}) {
-//	camera.position = position;
-//	camera.zoom = 1.;
-//}
-
-string_reset :: (str : *string) {
-	if str.count free(str.data);
-	str.count = 0;
-}
-
-is_valid :: (str : string) -> bool{
-	return str.count > 0;
-}
-
 draw_square :: (pos_window : Vector2, size : Vector2, color : Vector4) {
 	set_shader_for_color(true);
     h := Vector2.{size.x * .5, 0};
@@ -388,6 +373,64 @@ is_overlap :: (apos : Vector2, a : *Collider, bpos : Vector2, b : *Collider) -> 
 	return is_circle_overlap(apos, a.size.x, bpos, b.size.x);
 }
 
+get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {
+	//result : BoxFloat; @CLEAN
+
+	xmin := max(a.x-a.w/2., b.x-b.w/2.);
+	xmax := min(a.x+a.w/2., b.x+b.w/2.);
+	ymin := max(a.y-a.h/2., b.y-b.h/2.);
+	ymax := min(a.y+a.h/2., b.y+b.h/2.);
+
+	if xmin < xmax && ymin < ymax {
+		w := xmax-xmin;
+		h := ymax-ymin;
+		return true, BoxFloat.{xmin+w/2., ymin+h/2., w, h};
+	}
+	return false, BoxFloat.{};
+
+	/*
+	// check for nested box;
+	//win={960, 540, 1920, 1080} | subclip={1160.156494, 715.739258, 20, 20}
+	if b0.x+b0.w/2. > b1.x+b1.w/2. && b0.x-b0.w/2. < b1.x-b1.w/2. 
+		&& b0.y+b0.h/2. > b1.y+b1.h/2. && b0.y-b0.h/2. < b1.y-b1.h/2.
+	{
+		return b1;
+	} 
+
+	if b0.x+b0.w/2. < b1.x+b1.w/2. && b0.x-b0.w/2. > b1.x-b1.w/2. 
+		&& b0.y+b0.h/2. < b1.y+b1.h/2. && b0.y-b0.h/2. > b1.y-b1.h/2.
+	{
+		return b0;
+	} 
+
+	result.x = (b0.x - b1.x)/2. + b0.x;
+	result.y = (b0.y - b1.y)/2. + b0.y;
+	result.w = (b1.x-b1.w/2) + (b0.x+b0.w/2.);
+	result.h = (b1.y-b1.h/2) + (b0.y+b0.h/2.);
+	return result;
+	*/
+}
+
+/*
+is_overlap :: (b0 : BoxFloat, b1 : BoxFloat) -> bool {
+	overlap := get_box_intersection(b0, b1);
+	return is_valid(overlap);
+}
+
+is_valid :: (box : BoxFloat) -> bool {
+	return box.w > 0. && box.h > 0.;
+}
+*/
+
+string_reset :: (str : *string) {
+	if str.count free(str.data);
+	str.count = 0;
+}
+
+is_valid :: (str : string) -> bool{
+	return str.count > 0;
+}
+
 linear_move :: (position : *Vector2, velocity : *Vector2, dt : float) {
     position.x += velocity.x * dt;
     position.y += velocity.y * dt;
@@ -455,6 +498,8 @@ update_mouse :: (){
 		//mouse_pos_world = coords_window_to_world(mouse_pos_window);  @CLEAN
 	}
 }
+
+// ~~~~~~~ Textures ~~~~~~~ 
 
 TextureAsset :: struct {
 	id : s64;
@@ -925,13 +970,8 @@ register_commands :: () {
 	register_cmd("test", (args: .. Any) { print("CMD test args=%\n", args); });
 	register_cmd("toggle_ui", (args: .. Any) { debug_ui_enabled = !debug_ui_enabled; });
 	register_cmd("toggle_mute", (args: .. Any) { toggle_mute(); });
-	//@CLEAN register_cmd("toggle_camera_rendering", (args: .. Any) { debug_camera_rendering = !debug_camera_rendering; });
-	//register_cmd("toggle_mouse_pos", (args: .. Any) { debug_mouse_position = !debug_mouse_position; });
-	//register_cmd("zoom_in", (args: .. Any) { camera.zoom += 0.1; });
-	//register_cmd("zoom_out", (args: .. Any) { camera.zoom -= 0.1; });
 	register_cmd("debug_colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
 	register_cmd("fps", (args: .. Any) {  config.fps = ifx config.fps == -1 then 144 else -1; });
-	//register_cmd("toggle_mode", (args: .. Any) {  toggle_mode(); });
 
 	register_cmd("help", (args: .. Any) {
 		print("Registered Commands\n");

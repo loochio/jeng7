@@ -81,6 +81,7 @@ TextureID :: enum s64 {
 
 	Entrance;
 	Exit;
+	ExitOutline;
 
 	Bug;
 	Corpse;
@@ -109,6 +110,7 @@ init_textures :: () {
 	load(.Hero, 	"hero3/hero3.png");
 	load(.Entrance, "entrance/entrance.png");
 	load(.Exit, 	"exit/exit.png");
+	load(.ExitOutline, 	"outline/outline.png");
 
 	load(.Bug, 		"bug/bug.png");
 	load(.Corpse, 	"corpse/corpse.png");
@@ -139,6 +141,7 @@ init_sprites :: () {
 	sprites[TextureID.Hero] 	= init_sprite(.Hero, frames=2, play_length=1);
 	sprites[TextureID.Entrance] = init_sprite(.Entrance);
 	sprites[TextureID.Exit] 	= init_sprite(.Exit);
+	sprites[TextureID.ExitOutline] 	= init_sprite(.Exit, layer=-1);
 
 	sprites[TextureID.Bug] 		= init_sprite(.Bug, frames=4, play_length=0.25);
 	sprites[TextureID.Corpse] 	= init_sprite(.Corpse);
@@ -151,8 +154,8 @@ init_sprites :: () {
 	sprites[TextureID.Marker] 	= init_sprite(.Marker, frames=3, play_length=0.5, layer=200);
 	sprites[TextureID.Pebble] 	= init_sprite(.Pebble);
 
-	sprites[TextureID.Tile_01] 	= init_sprite(.Tile_01);
-	sprites[TextureID.Tile_Magma] = init_sprite(.Tile_Magma, frames=4, play_length=1);
+	sprites[TextureID.Tile_01] 	= init_sprite(.Tile_01, layer=-100);
+	sprites[TextureID.Tile_Magma] = init_sprite(.Tile_Magma, frames=4, play_length=1, layer=-100);
 }
 
 get_sprite :: (tid : TextureID) -> *Sprite {

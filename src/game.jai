@@ -5,6 +5,15 @@ Inspirations: Coccoon | Patrick's Parabox
 
 Log: 14 Sept 2025
 Inspirations: Inception
+
+14 Sept 2025 from Moonbase420
+// Dear maintainer: // 
+// Once you are done trying to 'optimize' this routine, 
+// and have realized what a terrible mistake that was, 
+// please increment the following counter as a warning 
+// to the next guy: // 
+// total_hours_wasted_here = 42 //
+
 */
 
 game_plugin := EnginePlugin.{
@@ -242,13 +251,10 @@ toggle_pause :: () {
 }
 
 game_render :: (dt : float) {
-	//@TODO
-	clip : BoxFloat;
-	clip.x = window_width/2.;
-	clip.y = window_height/2.;
-	clip.w = xx window_width;
-	clip.h = xx window_height;
-	world_render(active_world);
+	clip := BoxFloat.{window_width/2., window_height/2., xx window_width, xx window_height};
+	//pos_in_window := Vector2.{window_width/2., window_height/2.};
+	pos_in_window := Vector2.{0,0};
+	world_render(active_world, 0, clip, pos_in_window);
 
 	draw_text :: (line : s64, format_string: string, args: .. Any) {
 		text := tprint(format_string, ..args);
@@ -256,13 +262,15 @@ game_render :: (dt : float) {
 	    text_y := window_height - hud_font.character_height * line;
 	    draw_prepared_text(hud_font, 0, text_y, G_WHITE);
 	}
-	draw_text(2, "[E] Interact");
+	draw_text(1, "[E] Pickup");
+	draw_text(2, "[Q] Interact");
 	draw_text(3, "[Arrows/WASD] Move");
-	draw_text(4, "World: % | Age=%", active_world.name, active_world.age);
+	draw_text(4, "[TAB] Pause");
+	draw_text(5, "[ENTER] Restart");
+	draw_text(6, "[F2] Mute");
 
-	draw_text(8, "[TAB] Pause");
-	draw_text(9, "[ENTER] Restart");
-	draw_text(10, "[F2] Mute");
+	draw_text(8, "World: % | D[%] | Age=%", active_world.name, active_world.depth, 
+		formatFloat(active_world.age, trailing_width=2));
 
 	//actor count
 	draw_actor_count :: true;
@@ -271,7 +279,7 @@ game_render :: (dt : float) {
 		for active_world.actors {
 			if is_valid(*it) count += 1;
 		}
-		draw_text(11, "actors=%", count);
+		draw_text(9, "actors=%", count);
 	}
 
 	draw_border :: (color := G_YELLOW, thickness := 100.) {
@@ -315,7 +323,7 @@ World :: struct {
 	actors_tail := 0;
 
 	parent : *World; //@TODO not sure how we're structuring this relationship yet
-	position_in_parent : Vector2; // position in parent space, typically equal to WorldEntrance
+	//@CLEAN position_in_parent : Vector2; // position in parent space, typically equal to WorldEntrance
 	
 	//@CLEAN
 	//exit_position : Vector2; // movable position where this exit pops to parent
@@ -425,36 +433,64 @@ get_world :: (name : string) -> *World{
 // replacing coords_world_to_window() to accommadate new world system
 vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0) -> Vector2 {
 	result := world_pos - world.camera.position;
-	//@TODO account for world.position_in_parent
-
 	scale := get_window_aspect_scale();
-	//scale *= world.camera.zoom; @CLEAN
 	scale *= get_nest_scale(nests);
 	result.x *= scale;
 	result.y *= scale;
-
 	result.x += window_width/2.;
 	result.y += window_height/2.;
 	return result;
 }
 
-//@TODO inheritted from previous engine versions, we don't use this in game currently
-//vec_window_to_world :: (window_pos : Vector2, world : *World) -> Vector2 {
-//	assert(false);
-//	return .{};
-//}
+world_enter :: (a : *Actor, world : *World) {
+	pos := Vector2.{};
 
-//render_sprite_from_world :: (sprite : *Sprite, world_pos : Vector2, world : *World, nests := 0) {
-//	win_pos := vec_world_to_window(world_pos, world, nests);
-//	scale := get_nest_scale_vec(nests);
-//	render_sprite(sprite, win_pos, scale);
-//}
+	//@FIX warp to the pos of target world's exit, wait what?
+	for world.actors { //@OPTIMIZE iterate on world.head/tail
+		if !is_valid(*it) continue;
+
+		if it.type == .WorldExit {
+			pos = it.position;
+			break;
+		}
+	}
+	world_warp(a, world, pos);
+}
+
+world_exit :: (a : *Actor) {
+	assert(a != null);
+	assert(a.world.parent != null);
+
+	// set the focus of this exiting world
+	for * a.world.actors { //@OPTIMIZE iterate on world.head/tail
+		if !is_valid(it) continue;
+
+		// set our focus to the exit
+		if a.type == .Hero && it.type == .WorldExit {
+			a.world.focus = it;
+			break;
+		}
+	}
+
+	// warp to the parent entrance position
+	pos := Vector2.{};
+	for * a.world.parent.actors { //@OPTIMIZE iterate on world.head/tail
+		if !is_valid(it) continue;
+
+		if it.type == .WorldEntrance && a.world == it.child_world {
+			pos = it.position;
+			break;
+		}
+	}
+	world_warp(a, a.world.parent, pos);
+}
 
 world_warp :: (a : *Actor, world : *World, pos := Vector2.{}) {
-	print("warping to world: % | actor=%\n", world.name, a.type);
 	assert(is_valid(world));
 	assert(is_valid(a));
+	assert(a.type == .Hero);
 
+	print("warping to world: % | actor=%\n", world.name, a.type);
 	active_world = world;
 	move_actor_to_world(a, active_world, pos);
 }
@@ -482,8 +518,6 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	new_actor.world = world;
 	new_actor.position = pos;
 
-	//@TODO what about markers?
-
 	if item != null {
 		i := move_actor_to_world(item, world);
 		item_pickup(i, new_actor);
@@ -497,8 +531,9 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 			active_world = world;
 		}
 		case .WorldEntrance; {
-			print("world parent updated: [%] -> [%]\n", new_actor.child_world.parent.name, world.name);
+			// update the linked worlds along with their depth (level of nesting)
 			new_actor.child_world.parent = world;
+			new_actor.child_world.depth = world.depth+1;
 		}
 	}
 
@@ -512,42 +547,6 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	// cleanup the old actor now that we're done with it
 	deinit_actor(actor);
 	return new_actor;
-}
-
-world_enter :: (a : *Actor, world : *World) {
-	pos := Vector2.{};
-	for world.actors {
-		if !is_valid(*it) continue;
-
-		if it.type == .WorldExit {
-			pos = it.position;
-			break;
-		}
-	}
-	world_warp(a, world, pos);
-}
-
-world_exit :: (a : *Actor) {
-	assert(a != null);
-	assert(a.world.parent != null);
-
-	world := a.world.parent;
-	pos := Vector2.{};
-
-	for * world.actors {
-		if !is_valid(it) continue;
-
-		if it.type == .WorldEntrance && a.world == it.child_world {
-			pos = it.position;
-			//break; @CLEAN
-		}
-
-		// set our focus to the exit
-		if a.type == .Hero && it.type == .WorldExit {
-			a.world.focus = it;
-		}
-	}
-	world_warp(a, world, pos);
 }
 
 world_tick :: (using world : *World, dt : float, nests := 0) {
@@ -660,24 +659,16 @@ get_nest_color :: (nests : s64) -> Vector4 {
 	return lerp(BLUE, RED, nests / 3.);
 }
 
-world_render :: (using world : *World, nests := 0, origin_in_window := Vector2.{0,0}, clip_size := 0.) {
+world_render :: (using world : *World, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
 	assert(is_valid(world), "%", world.name);
 
 	nscale := get_nest_scale_vec(nests);
-	clipping := clip_size > 0;
-	clip_origin := origin_in_window;
-	clip_origin.x += window_width/2.;
-	clip_origin.y += window_height/2.;
-
-	parent_nscale := get_nest_scale_vec(nests-1);
-	size := scalar_to_window(clip_size) * parent_nscale.x;
-	clip_x0 : s32 = cast(s32)(clip_origin.x-size);
-	clip_y0 : s32 = cast(s32)(clip_origin.y-size);
-	clip_x1 : s32 = cast(s32)(clip_origin.x+size);
-	clip_y1 : s32 = cast(s32)(clip_origin.y+size);
-
-	if clipping {
-		set_scissor(clip_x0,clip_y0,clip_x1,clip_y1);
+	{
+		x0 := cast(s32)(window_clip.x - window_clip.w/2.);
+		y0 := cast(s32)(window_clip.y - window_clip.h/2.);
+		x1 := cast(s32)(window_clip.x + window_clip.w/2.);
+		y1 := cast(s32)(window_clip.y + window_clip.h/2.);
+		set_scissor(x0,y0,x1,y1);
 	}
 	
 	// sprite rendering, sorted by position.y
@@ -718,58 +709,79 @@ world_render :: (using world : *World, nests := 0, origin_in_window := Vector2.{
 		array_insert_at(*sorted_actors, a, idx);
 	}
 
+	// sprite rendering
 	for a : sorted_actors {
 		assert(is_valid(a));
-		pos_in_window := vec_world_to_window(a.position, world, nests);
-		pos_in_window += origin_in_window;
-		render_sprite(*a.sprite, pos_in_window, nscale);
 
-		//@CLEAN
-		//if (a.proc_render) 
-		//	a.proc_render(a, nests, pos_in_window);
+		// inlining vec_world_to_window() for clarity
+		pos := a.position - world.camera.position;
+		scale := get_window_aspect_scale();
+		scale *= get_nest_scale(nests);
+		pos.x *= scale;
+		pos.y *= scale;
+		pos.x += window_width/2.;
+		pos.y += window_height/2.;
+		pos += pos_in_window; // recursively add our pos
+
+		render_sprite(*a.sprite, pos, nscale);
 	}
 
-	if clipping {
-		clear_scissor();
-	}
+	// clear the scissor now so we can set a new one in our recursive render_entrance() call
+	clear_scissor();
 
+	// recursive actor rendering, only for render_entrance(..) for now.
 	//@OPTIMIZE copy-pasta on pos calc
 	for a : sorted_actors {
 		if a.proc_render {
-			pos_in_window := vec_world_to_window(a.position, world, nests);
-			pos_in_window += origin_in_window;
-			a.proc_render(a, nests, pos_in_window);
+			pos := vec_world_to_window(a.position, world, nests);
+			pos += pos_in_window; // recursively add our pos
+			a.proc_render(a, nests, window_clip, pos);
 		}
 	}
 
+	//@OPTIMIZE move this to an array_reset_safe(..) type of func
 	if sorted_actors.data != null
 		array_reset(*sorted_actors);
-
-
-	//@CLEAN
-	{ // clip box
-		box : BoxFloat;
-		box.w = xx(clip_x1 - clip_x0);
-		box.h = xx(clip_x1 - clip_x0);
-		box.x = xx(clip_x0 + box.w);
-		box.y = xx(clip_y0 + box.h);
-		draw_box(box, GREEN);
-	}
-
-	//{ // debug rendering for nested worlds
-	//	radius := scalar_to_window(16.) * nscale.x;
-	//	c := get_nest_color(world.depth);
-	//	draw_circle(clip_origin, radius, color=c);
-	//}
-
-	//{ // debug rendering for nested worlds
-	//	radius := scalar_to_window(10.) * nscale.x;
-	//	//c := get_nest_color(world.depth);
-//
-	//	draw_circle(.{xx x0,xx y0}, radius, color=GREEN);
-	//	draw_circle(.{xx x1,xx y1}, radius, color=YELLOW);
-	//}
 }
+
+ENTRANCE_CLIP_SIZE :: 80.;
+
+render_entrace := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
+	// find new clipping box, subdividing our current window_clip
+	subclip : BoxFloat;
+	subclip.x = pos_in_window.x;
+	subclip.y = pos_in_window.y;
+	nscale := get_nest_scale(nests);
+	box_size := ENTRANCE_CLIP_SIZE * nscale;
+	subclip.w = box_size;
+	subclip.h = box_size;
+
+	overlapping, intersection := get_box_intersection(window_clip, subclip);
+	
+	if overlapping {
+		//scuffed eps check
+		assert(intersection.w <= subclip.w+1. && intersection.h <= subclip.h+1., 
+			"nests=% | win=% | sub=% | intersection=%", nests, window_clip, subclip, intersection);
+
+		//@TODO render this as an outline sprite
+		//{
+		//	color := get_nest_color(a.world.depth);
+		//	thickness := scalar_to_window(4.) * nscale;
+		//	outline : BoxFloat;
+		//	outline.x = pos_in_window.x;
+		//	outline.y = pos_in_window.y;
+		//	outline.w = box_size;
+		//	outline.h = box_size;
+		//	draw_box(outline, color, thickness);
+		//}
+		
+		origin := pos_in_window;
+		origin.x -= window_width/2.;
+		origin.y -= window_height/2.;
+		world_render(a.child_world, nests+1, intersection, origin);
+	}
+}
+
 
 // Holding World data for spawning actors
 Level :: struct {
@@ -990,7 +1002,7 @@ ActorFlags :: enum_flags s64 {
 
 ActorProc :: #type (actor : *Actor);
 ActorProc_Tick :: #type (actor : *Actor, dt : float);
-ActorProc_Render :: #type (actor : *Actor, nests : s64, origin_in_window : Vector2);
+ActorProc_Render :: #type (actor : *Actor, nests : s64, clip : BoxFloat, pos_in_window : Vector2);
 ActorProc_Overlap :: #type (a0 : *Actor, a1 : *Actor);
 
 is_valid :: (actor : *Actor) -> bool{
@@ -1116,32 +1128,95 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 				world_enter(interactor, a.child_world);
 			}
 
-			a.proc_tick = (a : *Actor, dt : float) {
-				a.child_world.position_in_parent = a.position;
-			}
-
 			//@CLEAN
-			ENTRANCE_CLIP_SIZE :: 20.;
+			//a.proc_tick = (a : *Actor, dt : float) {
+			//	a.child_world.position_in_parent = a.position;
+			//}
 
-			proc_render_entrace := (a : *Actor, nests : s64, pos_in_window : Vector2) {
-				// render the nested world
-				origin := pos_in_window;
-				origin.x -= window_width/2.;
-				origin.y -= window_height/2.;
-
-				//@TODO
-				clip : BoxFloat;
-
-				world_render(a.child_world, nests+1, origin, clip_size=ENTRANCE_CLIP_SIZE);
+			a.proc_render = render_entrace; 
+			
+			/*
+			a.proc_render = (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
+				render_entrace(a, nests, window_clip, pos_in_window); 
 
 				nscale := get_nest_scale(nests);
 				color := get_nest_color(a.world.depth);
-				thickness := scalar_to_window(8.) * nscale;
-				size := scalar_to_window(ENTRANCE_CLIP_SIZE) * nscale;
-				draw_box(.{pos_in_window.x, pos_in_window.y, size*2, size*2}, color, thickness);
+				thickness := scalar_to_window(4.) * nscale;
+				outline : BoxFloat;
+				outline.x = pos_in_window.x;
+				outline.y = pos_in_window.y;
+				box_size := ENTRANCE_CLIP_SIZE * nscale;
+				outline.w = box_size;
+				outline.h = box_size;
+				draw_box(outline, color, thickness);
+			}*/
+
+
+			//@CLEAN
+			//a.proc_render = _old_proc_render_entrace;
+
+			//@CLEAN
+			//ENTRANCE_CLIP_SIZE :: 80.;
+
+/*
+			proc_render_entrace := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
+				entrance_pos := vec_world_to_window(a.position, a.world, nests);
+
+				//epos := a.position - a.world.camera.position;
+				//scale := get_window_aspect_scale();
+				//scale *= get_nest_scale(nests); 
+				//epos.x *= scale;
+				//epos.y *= scale;
+				//epos.x += window_width/2.;
+				//epos.y += window_height/2.;
+				//entrance_pos += pos_in_window;
+
+
+				//entrance_pos := vec_world_to_window(a.position, a.world, 0);
+
+				subclip : BoxFloat;
+				subclip.x = entrance_pos.x;
+				subclip.y = entrance_pos.y;
+				nscale := get_nest_scale(nests);
+				box_size := ENTRANCE_CLIP_SIZE * nscale;
+				subclip.w = box_size;
+				subclip.h = box_size;
+
+				// draw subclip
+				{
+					color := lerp(YELLOW, RED, nests / 3.);
+					thickness := scalar_to_window(2.) * nscale;
+					draw_box(subclip, color, thickness);
+				}
+				
+				overlapping, intersection := get_box_intersection(window_clip, subclip);
+				if overlapping {
+					//scuffed eps check
+					assert(intersection.w <= subclip.w+1. && intersection.h <= subclip.h+1., 
+						"nests=% | win=% | sub=% | intersection=%", nests, window_clip, subclip, intersection);
+
+					origin := entrance_pos;
+					//origin := entrance_pos + pos_in_window;
+					origin.x -= window_width/2.;
+					origin.y -= window_height/2.;
+
+					world_render(a.child_world, nests+1, intersection, origin);
+
+					color := get_nest_color(a.world.depth);
+					thickness := scalar_to_window(4.) * nscale;
+					outline : BoxFloat;
+					outline.x = entrance_pos.x;
+					outline.y = entrance_pos.y;
+					outline.w = box_size;
+					outline.h = box_size;
+					draw_box(outline, color, thickness);
+				}
+
 			}
+			*/
 
 			//@CLEAN old solution
+			/*
 			_old_proc_render_entrace := (a : *Actor, nests : s64, pos_in_window : Vector2) {
 				// draw a box in this world space
 				ns := get_nest_scale(nests);
@@ -1171,9 +1246,8 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 					clear_scissor();
 				}
 			}
-			//@CLEAN
-			a.proc_render = proc_render_entrace; 
-			//a.proc_render = _old_proc_render_entrace;
+			*/
+			
 		}
 
 		case .WorldExit; {
@@ -1199,8 +1273,9 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.body.collides_with = .Pawn | .Wall;
 		}
 
-		case .Tile; #through;
-		case .Tile_Red; { a.sprite.layer = -100;}
+		//@CLEAN
+		//case .Tile; #through;
+		//case .Tile_Red; { a.sprite.layer = -100;}
 	}
 
 	if a.proc_begin a.proc_begin(a);
