@@ -256,6 +256,12 @@ game_render :: (dt : float) {
 	pos_in_window := Vector2.{0,0};
 	world_render(active_world, 0, clip, pos_in_window);
 
+	{ // hero debug circle while we get rendering sorted
+		p := vec_world_to_window(active_world.hero.position, active_world);
+		r := scalar_to_window(16);
+		draw_circle(p, r, r-2, color=CYAN);
+	}
+	
 	draw_text :: (line : s64, format_string: string, args: .. Any) {
 		text := tprint(format_string, ..args);
 		text_width := prepare_text(hud_font, text);
@@ -315,10 +321,15 @@ game_render :: (dt : float) {
 World :: struct {
 	using level : Level;
 	flags : WorldFlags;
-	depth := 0; // level of nesting
+	depth := 0.; // level of nesting, float due to transition progress
 	age := 0.; // relative age, factoring in time dilation
 	parent : *World;
+	//subclip_size := SUBCLIP_SIZE_DEFAULT; @CLEAN
+
 	transition_time := 0.;
+	transition_progress := 0.; //[0-1]
+	transition_actor : *Actor;
+	transition_world : *World;
 
 	actors : [MAX_ACTORS_PER_WORLD] Actor;
 	actors_head := 0;
@@ -344,7 +355,7 @@ MAX_ACTORS_PER_WORLD :: 4096;
 active_world : *World;
 game_mouse_pos_world : Vector2;
 
-world_init :: (level_name : string, depth := 0) -> *World {
+world_init :: (level_name : string, depth := 0.) -> *World {
 	w : *World;
 	for * worlds {
 		if is_valid(it) continue;
@@ -424,7 +435,7 @@ get_world :: (name : string) -> *World{
 
 // Convert a vector in the given world space
 // replacing coords_world_to_window() to accommadate new world system
-vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0) -> Vector2 {
+vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0.) -> Vector2 {
 	result := world_pos - world.camera.position;
 	scale := get_window_aspect_scale();
 	scale *= get_nest_scale(nests);
@@ -435,10 +446,30 @@ vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0) -> Vect
 	return result;
 }
 
-world_enter :: (a : *Actor, world : *World) {
-	pos := Vector2.{};
+world_enter_begin :: (a : *Actor, world : *World) {
+	assert(a.type == .Hero);
 
-	//@FIX warp to the pos of target world's exit, wait what?
+	print("Starting world transition: % from %->%\n", a.type, a.world.name, world.name);
+	a.world.transition_time = WORLD_TRANSITION_TIME;
+	a.world.transition_actor = a;
+	a.world.transition_world = world;
+
+	//@TODO need to consider how pausing world ticks effects other nested worlds
+	//CLEAN exit world?
+	//world.transition_time = WORLD_TRANSITION_TIME;
+}
+
+world_enter_end :: (world : *World) {
+	assert(world.transition_actor != null);
+	assert(world.transition_world != null);
+	world_enter(world.transition_actor, world.transition_world);
+	world.transition_actor = null;
+	world.transition_world = null;
+}
+
+world_enter :: (a : *Actor, world : *World) {
+	// warp to the pos of target world's exit
+	pos := Vector2.{};
 	for world.actors { //@OPTIMIZE iterate on world.head/tail
 		if !is_valid(*it) continue;
 
@@ -520,7 +551,6 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 		case .Hero; {
 			world.focus = new_actor;
 			world.hero = new_actor;
-			world.transition_time = .25;
 			active_world = world;
 		}
 		case .WorldEntrance; {
@@ -542,7 +572,8 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	return new_actor;
 }
 
-world_tick :: (using world : *World, dt : float, nests := 0) {
+//@TODO is there a way we could schedule an arbitrary tick func? like a Task (struct)
+world_tick :: (using world : *World, dt : float, nests := 0.) {
 	assert(is_valid(world));
 
 	// Time dilation, time moves slower in nested worlds (think Inception)
@@ -568,12 +599,22 @@ world_tick :: (using world : *World, dt : float, nests := 0) {
 		camera.position.y = 0;
 	}
 	
+	// World transitions
 	//@TODO this only works for entrace, need to do somethign for exit
 	if transition_time > 0 {
 		transition_time -= dt;
+		transition_progress = 1. - transition_time / WORLD_TRANSITION_TIME;
+
+		//@TODO move this into the World
+		//subclip_max := max(window_width*1.25, window_height*1.25);
+		//subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, transition_progress);
 
 		if transition_time <= 0 {
+			assert(transition_progress >= 1., "%", transition_progress);
 			transition_time = 0;
+			transition_progress = 0.;
+			//subclip_size = SUBCLIP_SIZE_DEFAULT;
+			world_enter_end(world);
 		}
 		return;
 	}
@@ -638,26 +679,27 @@ world_tick :: (using world : *World, dt : float, nests := 0) {
 
 WORLD_NESTED_SCALE :: 0.5;
 WORLD_NESTED_SCALE_VEC :: Vector2.{WORLD_NESTED_SCALE, WORLD_NESTED_SCALE};
-SUBCLIP_SIZE :: 200.;
+SUBCLIP_SIZE_DEFAULT :: 200.;
+SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
+WORLD_TRANSITION_TIME :: 1.;
 
-get_nest_scale :: (nests := 0) -> float {
-	return pow(WORLD_NESTED_SCALE, cast(float)nests);
+get_nest_scale :: (nests := 0.) -> float {
+	return pow(WORLD_NESTED_SCALE, nests);
 }
 
-get_nest_scale_vec :: (nests := 0) -> Vector2 {
+get_nest_scale_vec :: (nests := 0.) -> Vector2 {
 	scale := get_nest_scale(nests);
 	return Vector2.{scale, scale};
 }
 
-get_nest_color :: (nests : s64) -> Vector4 {
+get_nest_color :: (nests : float) -> Vector4 {
 	return lerp(BLUE, RED, nests / 3.);
 }
 
-world_render :: (using world : *World, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
+world_render :: (using world : *World, nests : float, window_clip : BoxFloat, pos_in_window : Vector2) {
 	assert(is_valid(world), "%", world.name);
 
-	nscale := get_nest_scale_vec(nests);
-	{
+	{ // scissor clip for this world, cleared before next recursive call
 		x0 := cast(s32)(window_clip.x - window_clip.w/2.);
 		y0 := cast(s32)(window_clip.y - window_clip.h/2.);
 		x1 := cast(s32)(window_clip.x + window_clip.w/2.);
@@ -703,16 +745,22 @@ world_render :: (using world : *World, nests : s64, window_clip : BoxFloat, pos_
 		array_insert_at(*sorted_actors, a, idx);
 	}
 
+	// nest scaling, accounting for tranisitons
+	//nscale := get_nest_scale_vec(nests); @CLEAN
+	n := nests - world.transition_progress;
+	nscale := get_nest_scale_vec(n);
+
+	// final window scale
+	winscale := get_window_aspect_scale();
+	scale := winscale * nscale;
+
 	// sprite rendering
 	for a : sorted_actors {
 		assert(is_valid(a));
 
 		// inlining vec_world_to_window() for clarity
 		pos := a.position - world.camera.position;
-		scale := get_window_aspect_scale();
-		scale *= get_nest_scale(nests);
-		pos.x *= scale;
-		pos.y *= scale;
+		pos *= scale;
 		pos.x += window_width/2.;
 		pos.y += window_height/2.;
 		pos += pos_in_window; // recursively add our pos
@@ -727,9 +775,14 @@ world_render :: (using world : *World, nests : s64, window_clip : BoxFloat, pos_
 	//@OPTIMIZE copy-pasta on pos calc
 	for a : sorted_actors {
 		if a.proc_render {
-			pos := vec_world_to_window(a.position, world, nests);
+			pos := vec_world_to_window(a.position, world, n);
 			pos += pos_in_window; // recursively add our pos
-			a.proc_render(a, nests, window_clip, pos);
+			a.proc_render(a, n, window_clip, pos);
+
+			//@CLEAN old
+			//pos := vec_world_to_window(a.position, world, nests);
+			//pos += pos_in_window; // recursively add our pos
+			//a.proc_render(a, nests, window_clip, pos);
 		}
 	}
 
@@ -738,13 +791,31 @@ world_render :: (using world : *World, nests : s64, window_clip : BoxFloat, pos_
 		array_reset(*sorted_actors);
 }
 
-render_sub_world := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
+subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_window : Vector2) {
+	// account for tranisition progress for scaling
+	//n := nests - a.world.transition_progress;
+	//nscale := get_nest_scale(n);
+	nscale := get_nest_scale(nests);
+
+	if a.world.transition_progress > 0 {
+		print("world[%] | nscale=% | n=% | prog=%\n", a.world.name,
+			nscale, nests, a.world.transition_progress);
+	}
+
 	// find new clipping box, subdividing our current window_clip
 	subclip : BoxFloat;
 	subclip.x = pos_in_window.x;
 	subclip.y = pos_in_window.y;
-	nscale := get_nest_scale(nests);
-	box_size := SUBCLIP_SIZE * nscale;
+
+	subclip_size := SUBCLIP_SIZE_DEFAULT;
+
+	// only widen this subclip for the target transition entrance
+	if a.world.transition_world == a.child_world {
+		subclip_max := max(window_width*1.25, window_height*1.25);
+		subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, a.world.transition_progress);
+	}
+	
+	box_size := subclip_size * nscale;
 	subclip.w = box_size;
 	subclip.h = box_size;
 
@@ -760,17 +831,7 @@ render_sub_world := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_win
 		origin.y -= window_height/2.;
 		world_render(a.child_world, nests+1, intersection, origin);
 
-		//@TODO render this as an outline sprite, it needs to respect the world_render(..) scissor
-		//{
-		//	color := get_nest_color(a.world.depth);
-		//	thickness := scalar_to_window(4.) * nscale;
-		//	outline : BoxFloat;
-		//	outline.x = pos_in_window.x;
-		//	outline.y = pos_in_window.y;
-		//	outline.w = box_size;
-		//	outline.h = box_size;
-		//	draw_box(outline, color, thickness);
-		//}
+		//@TODO render this an outline sprite, needs to respect the world_render(..) scissor
 	}
 }
 
@@ -994,7 +1055,7 @@ ActorFlags :: enum_flags s64 {
 
 ActorProc :: #type (actor : *Actor);
 ActorProc_Tick :: #type (actor : *Actor, dt : float);
-ActorProc_Render :: #type (actor : *Actor, nests : s64, clip : BoxFloat, pos_in_window : Vector2);
+ActorProc_Render :: #type (actor : *Actor, nests : float, clip : BoxFloat, pos_in_window : Vector2);
 ActorProc_Overlap :: #type (a0 : *Actor, a1 : *Actor);
 
 is_valid :: (actor : *Actor) -> bool{
@@ -1115,11 +1176,13 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 
-			a.proc_render = render_sub_world; 
+			a.proc_render = subworld_render; 
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
-				print("% interacted with %\n", interactor.type, a.type);
-				world_enter(interactor, a.child_world);
+				if interactor.type == {
+					case .Hero; world_enter_begin(interactor, a.child_world);
+					case; 		world_enter(interactor, a.child_world);
+				}
 			}
 		}
 
