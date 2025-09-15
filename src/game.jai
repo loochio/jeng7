@@ -316,28 +316,21 @@ World :: struct {
 	using level : Level;
 	flags : WorldFlags;
 	depth := 0; // level of nesting
-	age := 0.;
+	age := 0.; // relative age, factoring in time dilation
+	parent : *World;
+	transition_time := 0.;
 
 	actors : [MAX_ACTORS_PER_WORLD] Actor;
 	actors_head := 0;
 	actors_tail := 0;
 
-	parent : *World; //@TODO not sure how we're structuring this relationship yet
-	//@CLEAN position_in_parent : Vector2; // position in parent space, typically equal to WorldEntrance
-	
-	//@CLEAN
-	//exit_position : Vector2; // movable position where this exit pops to parent
-
 	hero_spawn_index := 0;
 	spawn_position : Vector2;
 	hero : *Actor; //@TODO remove, looks like we only use this for Markers
-	world_transition_time := 0.;
 	
 	camera : Camera;
-	viewport : BoxFloat;
 	focus : *Actor;
 	focus_default : *Actor;
-	render_scale := Vector2.{0.15, 0.15}; // render scale for 1 layer of nesting
 }
 
 WorldFlags :: enum_flags u8 {
@@ -360,12 +353,12 @@ world_init :: (level_name : string, depth := 0) -> *World {
 		w.flags |= .Initialized;
 		w.depth = depth;
 		w.age = 0.;
+		w.parent = null;
+		w.transition_time = 0.;
 		w.actors_head = 0;
 		w.actors_tail = 0;
 		w.hero_spawn_index = 0;
 		w.hero = null;
-		w.world_transition_time = 0.;
-		w.parent = null;
 		break;
 	}
 	assert(w != null);
@@ -527,7 +520,7 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 		case .Hero; {
 			world.focus = new_actor;
 			world.hero = new_actor;
-			world.world_transition_time = .25;
+			world.transition_time = .25;
 			active_world = world;
 		}
 		case .WorldEntrance; {
@@ -576,11 +569,11 @@ world_tick :: (using world : *World, dt : float, nests := 0) {
 	}
 	
 	//@TODO this only works for entrace, need to do somethign for exit
-	if world_transition_time > 0 {
-		world_transition_time -= dt;
+	if transition_time > 0 {
+		transition_time -= dt;
 
-		if world_transition_time <= 0 {
-			world_transition_time = 0;
+		if transition_time <= 0 {
+			transition_time = 0;
 		}
 		return;
 	}
@@ -643,8 +636,9 @@ world_tick :: (using world : *World, dt : float, nests := 0) {
     }
 }
 
-WORLD_NESTED_SCALE :: 0.25;
+WORLD_NESTED_SCALE :: 0.5;
 WORLD_NESTED_SCALE_VEC :: Vector2.{WORLD_NESTED_SCALE, WORLD_NESTED_SCALE};
+SUBCLIP_SIZE :: 200.;
 
 get_nest_scale :: (nests := 0) -> float {
 	return pow(WORLD_NESTED_SCALE, cast(float)nests);
@@ -744,26 +738,29 @@ world_render :: (using world : *World, nests : s64, window_clip : BoxFloat, pos_
 		array_reset(*sorted_actors);
 }
 
-ENTRANCE_CLIP_SIZE :: 80.;
-
-render_entrace := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
+render_sub_world := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
 	// find new clipping box, subdividing our current window_clip
 	subclip : BoxFloat;
 	subclip.x = pos_in_window.x;
 	subclip.y = pos_in_window.y;
 	nscale := get_nest_scale(nests);
-	box_size := ENTRANCE_CLIP_SIZE * nscale;
+	box_size := SUBCLIP_SIZE * nscale;
 	subclip.w = box_size;
 	subclip.h = box_size;
 
 	overlapping, intersection := get_box_intersection(window_clip, subclip);
-	
+
 	if overlapping {
 		//scuffed eps check
 		assert(intersection.w <= subclip.w+1. && intersection.h <= subclip.h+1., 
 			"nests=% | win=% | sub=% | intersection=%", nests, window_clip, subclip, intersection);
 
-		//@TODO render this as an outline sprite
+		origin := pos_in_window;
+		origin.x -= window_width/2.;
+		origin.y -= window_height/2.;
+		world_render(a.child_world, nests+1, intersection, origin);
+
+		//@TODO render this as an outline sprite, it needs to respect the world_render(..) scissor
 		//{
 		//	color := get_nest_color(a.world.depth);
 		//	thickness := scalar_to_window(4.) * nscale;
@@ -774,11 +771,6 @@ render_entrace := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_windo
 		//	outline.h = box_size;
 		//	draw_box(outline, color, thickness);
 		//}
-		
-		origin := pos_in_window;
-		origin.x -= window_width/2.;
-		origin.y -= window_height/2.;
-		world_render(a.child_world, nests+1, intersection, origin);
 	}
 }
 
@@ -857,7 +849,7 @@ level_load :: (name : string, level : *Level) -> bool {
 	}
 
 	// Level should have been freed before hand
-	assert(level.name.count == 0, "%", level.name); //@CLEAN
+	assert(level.name.count == 0, "%", level.name);
 	assert(level.spawners.count == 0 && level.spawners.data == null);
 	assert(level.hero_spawn_points.count == 0 && level.hero_spawn_points.data == null);
 
@@ -1123,131 +1115,12 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 
+			a.proc_render = render_sub_world; 
+
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
 				print("% interacted with %\n", interactor.type, a.type);
 				world_enter(interactor, a.child_world);
 			}
-
-			//@CLEAN
-			//a.proc_tick = (a : *Actor, dt : float) {
-			//	a.child_world.position_in_parent = a.position;
-			//}
-
-			a.proc_render = render_entrace; 
-			
-			/*
-			a.proc_render = (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
-				render_entrace(a, nests, window_clip, pos_in_window); 
-
-				nscale := get_nest_scale(nests);
-				color := get_nest_color(a.world.depth);
-				thickness := scalar_to_window(4.) * nscale;
-				outline : BoxFloat;
-				outline.x = pos_in_window.x;
-				outline.y = pos_in_window.y;
-				box_size := ENTRANCE_CLIP_SIZE * nscale;
-				outline.w = box_size;
-				outline.h = box_size;
-				draw_box(outline, color, thickness);
-			}*/
-
-
-			//@CLEAN
-			//a.proc_render = _old_proc_render_entrace;
-
-			//@CLEAN
-			//ENTRANCE_CLIP_SIZE :: 80.;
-
-/*
-			proc_render_entrace := (a : *Actor, nests : s64, window_clip : BoxFloat, pos_in_window : Vector2) {
-				entrance_pos := vec_world_to_window(a.position, a.world, nests);
-
-				//epos := a.position - a.world.camera.position;
-				//scale := get_window_aspect_scale();
-				//scale *= get_nest_scale(nests); 
-				//epos.x *= scale;
-				//epos.y *= scale;
-				//epos.x += window_width/2.;
-				//epos.y += window_height/2.;
-				//entrance_pos += pos_in_window;
-
-
-				//entrance_pos := vec_world_to_window(a.position, a.world, 0);
-
-				subclip : BoxFloat;
-				subclip.x = entrance_pos.x;
-				subclip.y = entrance_pos.y;
-				nscale := get_nest_scale(nests);
-				box_size := ENTRANCE_CLIP_SIZE * nscale;
-				subclip.w = box_size;
-				subclip.h = box_size;
-
-				// draw subclip
-				{
-					color := lerp(YELLOW, RED, nests / 3.);
-					thickness := scalar_to_window(2.) * nscale;
-					draw_box(subclip, color, thickness);
-				}
-				
-				overlapping, intersection := get_box_intersection(window_clip, subclip);
-				if overlapping {
-					//scuffed eps check
-					assert(intersection.w <= subclip.w+1. && intersection.h <= subclip.h+1., 
-						"nests=% | win=% | sub=% | intersection=%", nests, window_clip, subclip, intersection);
-
-					origin := entrance_pos;
-					//origin := entrance_pos + pos_in_window;
-					origin.x -= window_width/2.;
-					origin.y -= window_height/2.;
-
-					world_render(a.child_world, nests+1, intersection, origin);
-
-					color := get_nest_color(a.world.depth);
-					thickness := scalar_to_window(4.) * nscale;
-					outline : BoxFloat;
-					outline.x = entrance_pos.x;
-					outline.y = entrance_pos.y;
-					outline.w = box_size;
-					outline.h = box_size;
-					draw_box(outline, color, thickness);
-				}
-
-			}
-			*/
-
-			//@CLEAN old solution
-			/*
-			_old_proc_render_entrace := (a : *Actor, nests : s64, pos_in_window : Vector2) {
-				// draw a box in this world space
-				ns := get_nest_scale(nests);
-				//ENTRANCE_CLIP_SIZE :: 20.;
-				size := scalar_to_window(ENTRANCE_CLIP_SIZE) * ns;
-				
-				if nests == 0 
-				{
-					x0 : s32 = cast(s32)(pos_in_window.x-size);
-					y0 : s32 = cast(s32)(pos_in_window.y-size);
-					x1 : s32 = cast(s32)(pos_in_window.x+size);
-					y1 : s32 = cast(s32)(pos_in_window.y+size);
-					set_scissor(x0,y0,x1,y1);
-				}
-
-				// render the nested world
-				origin := pos_in_window;
-				origin.x -= window_width/2.;
-				origin.y -= window_height/2.;
-				world_render(a.child_world, nests+1, origin);
-				
-				color := get_nest_color(a.world.depth);
-				thickness := scalar_to_window(8.) * ns;
-				draw_box(.{pos_in_window.x, pos_in_window.y, size*2, size*2}, color, thickness);
-
-				if nests == 0 {
-					clear_scissor();
-				}
-			}
-			*/
-			
 		}
 
 		case .WorldExit; {
@@ -1272,10 +1145,6 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 		}
-
-		//@CLEAN
-		//case .Tile; #through;
-		//case .Tile_Red; { a.sprite.layer = -100;}
 	}
 
 	if a.proc_begin a.proc_begin(a);
@@ -1310,14 +1179,7 @@ destroy :: (a : *Actor) {
 	a.held_item = null;
 	a.parent = null;
 
-	//if a.children.data != null @CLEAN
 	array_reset_keeping_memory(*a.children);
-
-	//@TODO marker logic
-	//if a.marker {
-	//	destroy(a.marker);
-	//	a.marker = null;
-	//}
 
 	//@TODO is this a way to reinitialize the entire Actor?
 	//a = Actor.{};

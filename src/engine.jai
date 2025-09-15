@@ -73,13 +73,11 @@ hud_theme: Overall_Theme;
 terminal_enabled := false;
 
 mouse_pos_window : Vector2;
-//mouse_pos_world : Vector2; @CLEAN
 
 Camera :: struct {
 	position : Vector2;
 	zoom := 1.0;
 }
-//camera : Camera; @CLEAN
 
 // Colors
 WHITE 		:: Vector4.{1,1,1,1};
@@ -116,7 +114,6 @@ engine_init :: (cfg : EngineConfig) {
 	init_sprites();
 	init_sound();
 	init_particles();
-	//camera_reset(); @CLEAN
 
 	//@TODO put behind a runtime config, not sure what that default value needs to be
 	if !config.vsync {
@@ -374,8 +371,6 @@ is_overlap :: (apos : Vector2, a : *Collider, bpos : Vector2, b : *Collider) -> 
 }
 
 get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {
-	//result : BoxFloat; @CLEAN
-
 	xmin := max(a.x-a.w/2., b.x-b.w/2.);
 	xmax := min(a.x+a.w/2., b.x+b.w/2.);
 	ymin := max(a.y-a.h/2., b.y-b.h/2.);
@@ -387,40 +382,7 @@ get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {
 		return true, BoxFloat.{xmin+w/2., ymin+h/2., w, h};
 	}
 	return false, BoxFloat.{};
-
-	/*
-	// check for nested box;
-	//win={960, 540, 1920, 1080} | subclip={1160.156494, 715.739258, 20, 20}
-	if b0.x+b0.w/2. > b1.x+b1.w/2. && b0.x-b0.w/2. < b1.x-b1.w/2. 
-		&& b0.y+b0.h/2. > b1.y+b1.h/2. && b0.y-b0.h/2. < b1.y-b1.h/2.
-	{
-		return b1;
-	} 
-
-	if b0.x+b0.w/2. < b1.x+b1.w/2. && b0.x-b0.w/2. > b1.x-b1.w/2. 
-		&& b0.y+b0.h/2. < b1.y+b1.h/2. && b0.y-b0.h/2. > b1.y-b1.h/2.
-	{
-		return b0;
-	} 
-
-	result.x = (b0.x - b1.x)/2. + b0.x;
-	result.y = (b0.y - b1.y)/2. + b0.y;
-	result.w = (b1.x-b1.w/2) + (b0.x+b0.w/2.);
-	result.h = (b1.y-b1.h/2) + (b0.y+b0.h/2.);
-	return result;
-	*/
 }
-
-/*
-is_overlap :: (b0 : BoxFloat, b1 : BoxFloat) -> bool {
-	overlap := get_box_intersection(b0, b1);
-	return is_valid(overlap);
-}
-
-is_valid :: (box : BoxFloat) -> bool {
-	return box.w > 0. && box.h > 0.;
-}
-*/
 
 string_reset :: (str : *string) {
 	if str.count free(str.data);
@@ -444,37 +406,6 @@ get_window_aspect_scale :: () -> float {
 		return window_width / cast(float)config.world_width;
 	}
 }
-
-/*@CLEAN
-coords_world_to_window :: (v : Vector2, camera : *Camera) -> Vector2 {
-	result := v - camera.position;
-
-	scale := get_window_aspect_scale();
-	scale *= camera.zoom;
-	result.x *= scale;
-	result.y *= scale;
-
-	result.x += window_width/2.;
-	result.y += window_height/2.;
-	return result;
-}
-*/
-/*
-coords_window_to_world :: (v : Vector2, camera : *Camera) -> Vector2 {
-	result := v;
-
-	result.x -= window_width/2.;
-	result.y -= window_height/2.;
-
-	scale := get_window_aspect_scale();
-	scale /= camera.zoom;
-	result.x /= scale;
-	result.y /= scale;
-
-	result = result + camera.position;
-	return result;
-}
-*/
 
 scalar_to_window :: (value : float) -> float {
 	return value * get_window_aspect_scale();
