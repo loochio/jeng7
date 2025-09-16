@@ -16,7 +16,6 @@ asset_path : string;
 img_path : string;
 
 debug_ui_enabled := true;
-debug_colliders := false;
 
 ENABLE_FRUSTRUM_CULLING :: false;
 
@@ -284,21 +283,19 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
     }
 }
 
-/* @TODO reimplement, not compatible with new world system
-draw_collider :: (pos : Vector2, collider : *Collider, camera : *Camera) {
+draw_collider :: (window_pos : Vector2, collider : *Collider) {
 	if collider.type == .Inactive return;
 
-	p := coords_world_to_window(pos, camera);
-	r := scalar_to_window(collider.size.x); //@TODO account for world render scale?
+	r := collider.size.x*2.;
 	c := BLUE;
 	if collider.type == {
 		case .Dynamic; c = MAGENTA;
 		case .Trigger; c = YELLOW;
 	}
 	if !collider.enabled c = RED;
-	draw_circle(p, radius_outer=r, radius_inner=r-2, color=c);
+	draw_circle(window_pos, radius_outer=r, radius_inner=r-2, color=c);
 }
-*/
+
 
 // ~~~~~~~ Collision / Util ~~~~~~~ 
 
@@ -307,6 +304,11 @@ BoxFloat :: struct {
 	y : float = 0;
 	w : float = 0;
 	h : float = 0;
+}
+
+AABB :: struct {
+	lower : Vector2;
+	upper : Vector2;
 }
 
 Collider :: struct {
@@ -383,6 +385,16 @@ get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {
 	}
 	return false, BoxFloat.{};
 }
+
+//@TODO
+/*to_box :: (aabb : *AABB) -> BoxFloat {
+	result := BoxFloat.{};
+	dx:= distance(aabb.upper.x, aabb.lower.x);
+	result.x = aabb.upper.x - aabb.lower.x
+	return .{
+		.x = 
+	};
+}*/
 
 string_reset :: (str : *string) {
 	if str.count free(str.data);
@@ -901,7 +913,6 @@ register_commands :: () {
 	register_cmd("test", (args: .. Any) { print("CMD test args=%\n", args); });
 	register_cmd("toggle_ui", (args: .. Any) { debug_ui_enabled = !debug_ui_enabled; });
 	register_cmd("toggle_mute", (args: .. Any) { toggle_mute(); });
-	register_cmd("debug_colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
 	register_cmd("fps", (args: .. Any) {  config.fps = ifx config.fps == -1 then 144 else -1; });
 
 	register_cmd("help", (args: .. Any) {

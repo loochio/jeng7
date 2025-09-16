@@ -175,6 +175,7 @@ Sfx_ID :: enum s64 {
 	PickupStart;
 	PickupThrow;
 	PickupDrop;
+	Warp;
 
 	COUNT;
 }
@@ -196,6 +197,7 @@ init_sound :: () {
 	load(.PickupStart, 		"e16_Blow_2.wav");
 	load(.PickupThrow, 		"e16_Jump_1.wav");
 	load(.PickupDrop, 		"e16_Jump_1.wav");
+	load(.Warp, 			"e16_Bubble_heavy_1.wav");
 }
 
 sfx_assets : [Sfx_ID.COUNT] SfxAsset; 

@@ -33,9 +33,12 @@ input_down := false;
 input_right := false;
 input_left := false;
 
+debug_colliders := false;
+
 game_init :: () {
 	print("~~ Game Init ~~ \n");
 	register_cmd("game_restart", (args: .. Any) { game_restart(); });
+	register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
 	game_begin();
 }
 
@@ -285,11 +288,14 @@ game_render :: (dt : float) {
 	    draw_prepared_text(hud_font, text_x, xx text_y, G_RED3);
 	}
 
-	//@CLEAN
-	//debug_draw_pallette :: true;
-	//if debug_draw_pallette {
-	//	draw_pallet();
-	//}
+	if debug_colliders {
+		for *a : active_world.actors {
+			if !is_valid(a) continue;
+
+			p := vec_world_to_window(a.position, a.world);
+			draw_collider(p, *a.body);
+		}
+	}
 }
 
 // ~~~ Worlds ~~~
@@ -316,6 +322,7 @@ World :: struct {
 	camera : Camera;
 	focus : *Actor;
 	focus_default : *Actor;
+	background_fill := G_WHITE;
 }
 
 WorldFlags :: enum_flags u8 {
@@ -338,13 +345,6 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 		w = it;
 		w.flags |= .Initialized;
 		w.depth = depth;
-		//w.age = 0.; @CLEAN
-		//w.parent = null;
-		//w.transition_time = 0.;
-		//w.actors_head = 0;
-		//w.actors_tail = 0;
-		//w.hero_spawn_index = 0;
-		//w.hero = null;
 		break;
 	}
 	assert(w != null);
@@ -431,6 +431,9 @@ world_enter_begin :: (a : *Actor, world : *World) {
 	//@TODO need to consider how pausing world ticks effects other nested worlds
 	//CLEAN exit world?
 	//world.transition_time = WORLD_TRANSITION_TIME;
+
+	sfx := play_sound(.Warp);
+	//if sfx  sfx.user_volume_scale = random_get_within_range(0.15, 0.2);
 }
 
 world_enter_end :: (world : *World) {
@@ -481,6 +484,12 @@ world_exit :: (a : *Actor) {
 		}
 	}
 	world_warp(a, a.world.parent, pos);
+
+	sfx := play_sound(.Warp);
+	if sfx {
+		//sfx.user_volume_scale = random_get_within_range(0.15, 0.2);
+		sfx.rate_scale = .7; 
+	}
 }
 
 world_warp :: (a : *Actor, world : *World, pos := Vector2.{}) {
@@ -553,12 +562,12 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 
 	// Time dilation, time moves faster in nested worlds (think Inception)
 	pure_dt := dt;
-	nest_scale := get_nest_scale(nests);
-	dt *= 1/nest_scale;
+	nest_time := get_nest_time(nests);
+	dt *= 1/nest_time;
 	age += dt;
 
     // cam lerp 
-    camera.zoom = nest_scale;
+    camera.zoom = get_nest_scale(nests);
     if focus != null {
     	fp := focus.position;
 		dist := distance(camera.position, fp);
@@ -634,6 +643,8 @@ WORLD_NESTED_SCALE :: 0.5;
 WORLD_NESTED_SCALE_VEC :: Vector2.{WORLD_NESTED_SCALE, WORLD_NESTED_SCALE};
 SUBCLIP_SIZE_DEFAULT :: 200.;
 SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
+SUBCLIP_OUTLINE_THICKNESS :: 8.;
+WORLD_NESTED_TIME :: 0.25;
 WORLD_TRANSITION_TIME :: 0.25;
 
 get_nest_scale :: (nests := 0.) -> float {
@@ -643,6 +654,10 @@ get_nest_scale :: (nests := 0.) -> float {
 get_nest_scale_vec :: (nests := 0.) -> Vector2 {
 	scale := get_nest_scale(nests);
 	return Vector2.{scale, scale};
+}
+
+get_nest_time :: (nests := 0.) -> float {
+	return pow(WORLD_NESTED_TIME, nests);
 }
 
 get_nest_color :: (nests : float) -> Vector4 {
@@ -658,6 +673,18 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		x1 := cast(s32)(window_clip.x + window_clip.w/2.);
 		y1 := cast(s32)(window_clip.y + window_clip.h/2.);
 		set_scissor(x0,y0,x1,y1);
+
+		//@TODO change window_clip to an AABB
+		//clipAABB := AABB.{};
+		//clipAABB.lower = .{window_clip.x - window_clip.w/2., window_clip.y - window_clip.h/2.};
+		//clipAABB.upper = .{window_clip.x + window_clip.w/2., window_clip.y + window_clip.h/2.};
+		//c := clipAABB;
+		//set_scissor(xx c.lower.x, xx c.lower.y, xx c.upper.x, xx c.upper.y);
+	}
+
+	{ // background fill
+		color := world.background_fill * get_nest_color(world.depth);
+		draw_square(.{window_clip.x, window_clip.y}, .{window_clip.w, window_clip.h}, color);
 	}
 	
 	// sprite rendering, sorted by position.y
@@ -720,6 +747,22 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		render_sprite(*a.sprite, pos, nscale);
 	}
 
+	// draw window_clip border 
+	{
+		outline := window_clip;
+		thickness := scalar_to_window(SUBCLIP_OUTLINE_THICKNESS) * nscale.x;
+		color := world.background_fill * get_nest_color(world.depth) * .75;
+		color.w = 1;
+		draw_box(outline, color, thickness);
+
+		// time marker, white box on outline
+		TIME_PER_CYCLE :: 30.;
+		progress := fmod_cycling(world.age,TIME_PER_CYCLE) / TIME_PER_CYCLE;
+		p := get_box_percent_pos(*outline, progress);
+		size := scalar_to_window(8) * nscale.x;
+		draw_circle(p, size, color=G_WHITE);
+	}
+
 	// clear the scissor now so we can set a new one in our recursive render_entrance() call
 	clear_scissor();
 
@@ -770,6 +813,35 @@ subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_wi
 
 		//@TODO render this an outline sprite, needs to respect the world_render(..) scissor
 	}
+}
+
+// get the position around the edge of the box given a percent
+// start in bottom left, progress clockwise
+get_box_percent_pos :: (box : *BoxFloat, percent : float) -> Vector2{
+	percent = clamp(percent, 0., 1.);
+	result : Vector2;
+	x := box.x;
+	y := box.y;
+	w := box.w;
+	h := box.h;
+
+	if percent >= 0 && percent < .25 {
+		result.x = x-w/2.;
+		result.y = lerp(y-h/2., y+h/2., percent*4);
+	}
+	else if percent >= .25 && percent < .5 {
+		result.x = lerp(x-w/2., x+w/2., (percent-.25)*4);
+		result.y = y+h/2.;
+	}
+	else if percent >= .5 && percent < .75 {
+		result.x = x+w/2.;
+		result.y = lerp(y+h/2., y-h/2., (percent-.5)*4);
+	}
+	else { 
+		result.x = lerp(x+w/2., x-w/2., (percent-.75)*4);
+		result.y = y-h/2.;
+	}
+	return result;
 }
 
 
@@ -949,7 +1021,7 @@ Actor :: struct {
 	bounce := 0.5; 			// amount we bounce off a collision
 	scale := Vector2.{1,1}; //@TODO do we use this?
 
-	speed := Vector2.{1,1}; //@TODO duplicate of velocity?
+	speed := Vector2.{1,1}; // speed of the character added per frame (typically Heros)
 	interact_collider : Collider;
 	proc_onoverlap_interact : ActorProc_Overlap;
 
@@ -1029,11 +1101,6 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 	a.type = type;
 	a.sprite = get_actor_sprite(a.type);
 	a.position = pos;
-
-	//@CLEAN
-	//@TODO this is an error prone list of variables to reset
-	//a.lifetime = -1;
-	//a.lifetime_dt = 0.;
 	
 	if a.type == {
 		case .Hero; {
@@ -1043,7 +1110,7 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.body.is_a = .Pawn | .Hero;
 			a.body.collides_with = .Wall | .Pawn;
 			a.interact_collider.type = .Trigger;
-			a.interact_collider.size = .{22,22};
+			a.interact_collider.size = .{36,36};
 			a.interact_collider.is_a = .Pawn;
 			a.interact_collider.collides_with = .Pawn;
 
@@ -1107,8 +1174,8 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 		case .WorldEntrance; {
 			a.flags |= .Pickupable;
-			a.body.type = .Dynamic;
-			a.body.size = .{8,8};
+			a.body.type = .Kinematic;
+			a.body.size = .{SUBCLIP_SIZE_DEFAULT/4.,SUBCLIP_SIZE_DEFAULT/4.};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 
@@ -1124,7 +1191,7 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 		case .WorldExit; {
 			a.flags |= .Pickupable | .BlockWarping;
-			a.body.type = .Dynamic;
+			a.body.type = .Kinematic;
 			a.body.size = .{8,8};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
@@ -1153,33 +1220,8 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 destroy :: (a : *Actor) {
 	deinit_actor(a);
-
-	//@CLEAN
-	//a.world = null;
-	//a.child_world = null;
-//
-	//a.proc_begin = null;
-	//a.proc_tick = null;
-	//a.proc_render = null;
-//
-	//a.proc_on_interact = null;
-	//a.proc_on_dropped = null;
-	//a.proc_on_pickup = null;
-	//a.proc_onoverlap_interact = null;
-	//a.proc_onlifetime_expired = null;
-//
-	//a.position = .{0,0};
-	//a.relative_position = .{0,0};
-	//a.prev_position = .{0,0};
-	//a.direction = .{0,0};
-	//a.velocity = .{0,0};
-
 	collider_reset(*a.body);
 	collider_reset(*a.interact_collider);
-
-	//a.held_item = null;
-	//a.parent = null;
-
 	array_reset_keeping_memory(*a.children);
 }
 
@@ -1234,7 +1276,8 @@ item_pickup :: (item : *Actor, owner : *Actor) {
 
 	assert(owner.held_item == null);
 	owner.held_item = item;
-	attach(owner, item, .{0,20});
+	offset := Vector2.{0., owner.body.size.y + item.body.size.y};
+	attach(owner, item, offset);
 
 	if item.proc_on_pickup 
 		item.proc_on_pickup(item);
