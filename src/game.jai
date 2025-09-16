@@ -241,15 +241,34 @@ game_render :: (dt : float) {
 			draw_square(pos, size, G_BLACK);
 		}
 		else {
+			nests := -1.;
+			//n := -1;
+			//nests := ifx enter then n-active_world.transition_progress else n+active_world.transition_progress;
 			clip := BoxFloat.{pos.x, pos.y, size.x, size.y};
-			world_render(active_world.parent, -1, clip, pos, false);
+			enter := active_world.transition_enter;
+			world_render(active_world.parent, nests, clip, pos, false);
 		}
 	}
 	
 	{ // Active World, recursive rendering
-		start_size := scalar_to_window(440.);
-		clip := BoxFloat.{window_width/2., window_height/2., start_size*1.25, start_size};
+		ACTIVE_WORLD_CLIP_SIZE :: 440.;
+		clip_size_x := scalar_to_window(ACTIVE_WORLD_CLIP_SIZE) * 1.25;
+		clip_size_y := scalar_to_window(ACTIVE_WORLD_CLIP_SIZE);
+		sizex := clip_size_x;
+		sizey := clip_size_y;
+
+		// only scale the exit (@TODO for now)
+		if active_world.transition_world != null && !active_world.transition_enter {
+			assert(active_world.transition_progress >= 0);
+			sc := SUBCLIP_SIZE_DEFAULT;
+			dt := active_world.transition_progress;
+			sizex = lerp(clip_size_x, sc, dt);
+			sizey = lerp(clip_size_y, sc, dt);
+		}
+
+		clip := BoxFloat.{window_width/2., window_height/2., sizex, sizey};
 		//clip := BoxFloat.{window_width/2., window_height/2., xx window_width, xx window_height};
+
 		pos_in_window := Vector2.{0,0};
 		world_render(active_world, 0, clip, pos_in_window);
 	}
@@ -318,6 +337,7 @@ World :: struct {
 
 	transition_time := 0.;
 	transition_progress := 0.; //[0-1]
+	transition_enter := true;
 	transition_actor : *Actor;
 	transition_world : *World;
 
@@ -432,11 +452,10 @@ vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0.) -> Vec
 
 world_enter_begin :: (a : *Actor, world : *World) {
 	assert(a.type == .Hero);
-
-	print("Starting world transition: % from %->%\n", a.type, a.world.name, world.name);
 	a.world.transition_time = WORLD_TRANSITION_TIME;
 	a.world.transition_actor = a;
 	a.world.transition_world = world;
+	a.world.transition_enter = true;
 
 	//@TODO need to consider how pausing world ticks effects other nested worlds
 	//CLEAN exit world?
@@ -449,6 +468,7 @@ world_enter_begin :: (a : *Actor, world : *World) {
 world_enter_end :: (world : *World) {
 	assert(world.transition_actor != null);
 	assert(world.transition_world != null);
+	assert(world.transition_enter);
 	world_enter(world.transition_actor, world.transition_world);
 	world.transition_actor = null;
 	world.transition_world = null;
@@ -466,6 +486,23 @@ world_enter :: (a : *Actor, world : *World) {
 		}
 	}
 	world_warp(a, world, pos);
+}
+
+world_exit_begin :: (a : *Actor) {
+	a.world.transition_time = WORLD_TRANSITION_TIME;
+	a.world.transition_actor = a;
+	a.world.transition_enter = false;
+	a.world.transition_world = a.world.parent;
+	assert(a.world.parent != null);
+}
+
+world_exit_end :: (world : *World) {
+	assert(world.transition_actor != null);
+	assert(world.transition_world != null);
+	assert(!world.transition_enter);
+	world_exit(world.transition_actor);
+	world.transition_actor = null;
+	world.transition_world = null;
 }
 
 world_exit :: (a : *Actor) {
@@ -599,13 +636,20 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 	//@TODO this only works for entrace, need to do somethign for exit
 	if transition_time > 0 {
 		transition_time -= dt;
-		transition_progress = 1. - transition_time / WORLD_TRANSITION_TIME;
+		transition_progress = 1. - (transition_time / WORLD_TRANSITION_TIME);
 
 		if transition_time <= 0 {
 			assert(transition_progress >= 1., "%", transition_progress);
 			transition_time = 0;
 			transition_progress = 0.;
-			world_enter_end(world);
+
+			//@TODO generalize to world_transition_end
+			if transition_enter {
+				world_enter_end(world);
+			}
+			else {
+				world_exit_end(world);
+			}
 		}
 		return;
 	}
@@ -657,7 +701,8 @@ SUBCLIP_SIZE_DEFAULT :: 200.;
 SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
 SUBCLIP_OUTLINE_THICKNESS :: 8.;
 WORLD_NESTED_TIME :: 0.25;
-WORLD_TRANSITION_TIME :: 0.25;
+WORLD_TRANSITION_TIME :: 0.25; 
+//WORLD_TRANSITION_TIME :: 2.; //@CLEAN
 
 get_nest_scale :: (nests := 0.) -> float {
 	return pow(WORLD_NESTED_SCALE, nests);
@@ -680,18 +725,12 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 	assert(is_valid(world), "%", world.name);
 
 	{ // scissor clip for this world, cleared before next recursive call
+		//@TODO change window_clip to an AABB
 		x0 := cast(s32)(window_clip.x - window_clip.w/2.);
 		y0 := cast(s32)(window_clip.y - window_clip.h/2.);
 		x1 := cast(s32)(window_clip.x + window_clip.w/2.);
 		y1 := cast(s32)(window_clip.y + window_clip.h/2.);
 		set_scissor(x0,y0,x1,y1);
-
-		//@TODO change window_clip to an AABB
-		//clipAABB := AABB.{};
-		//clipAABB.lower = .{window_clip.x - window_clip.w/2., window_clip.y - window_clip.h/2.};
-		//clipAABB.upper = .{window_clip.x + window_clip.w/2., window_clip.y + window_clip.h/2.};
-		//c := clipAABB;
-		//set_scissor(xx c.lower.x, xx c.lower.y, xx c.upper.x, xx c.upper.y);
 	}
 
 	{ // background fill
@@ -738,7 +777,8 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 	}
 
 	// nest scaling, accounting for tranisitons
-	n := nests - world.transition_progress;
+	enter := world.transition_enter;
+	n := ifx enter then nests - world.transition_progress else nests + world.transition_progress;
 	nscale := get_nest_scale_vec(n);
 
 	// final window scale
@@ -803,10 +843,18 @@ subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_wi
 	subclip.y = pos_in_window.y;
 
 	// only widen this subclip for the target transition entrance
+	//@TODO some duplicated code to improve
 	subclip_size := SUBCLIP_SIZE_DEFAULT;
-	if a.world.transition_world == a.child_world {
-		subclip_max := max(window_width*1.25, window_height*1.25);
-		subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, a.world.transition_progress);
+
+	if a.world.transition_world != null {
+		if a.world.transition_world == a.child_world {
+			//enter tranistion
+			subclip_max := max(window_width*1.25, window_height*1.25);
+			subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, a.world.transition_progress);
+		}
+		//else if a.world.transition_world == a.world.parent {
+		//	subclip_size := SUBCLIP_SIZE_DEFAULT;
+		//}
 	}
 	
 	box_size := subclip_size * nscale;
@@ -1213,8 +1261,10 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.world.focus_default = a;
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
-				print("% interacted with %\n", interactor.type, a.type);
-				world_exit(interactor);
+				if interactor.type == {
+					case .Hero; world_exit_begin(interactor);
+					case; 		world_exit(interactor);
+				}
 			}
 		}
 
