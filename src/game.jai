@@ -234,16 +234,25 @@ physics_step :: (using world : *World, dt : float) {
 }
 
 game_render :: (dt : float) {
-	clip := BoxFloat.{window_width/2., window_height/2., xx window_width, xx window_height};
-	pos_in_window := Vector2.{0,0};
-	world_render(active_world, 0, clip, pos_in_window);
-
-	//@CLEAN
-	//{ // hero debug circle while we get rendering sorted
-	//	p := vec_world_to_window(active_world.hero.position, active_world);
-	//	r := scalar_to_window(16);
-	//	draw_circle(p, r, r-2, color=CYAN);
-	//}
+	{ // Parent World
+		pos := Vector2.{window_width/2., window_height/2.};
+		size := Vector2.{xx window_width, xx window_height};
+		if active_world.parent == null {
+			draw_square(pos, size, G_BLACK);
+		}
+		else {
+			clip := BoxFloat.{pos.x, pos.y, size.x, size.y};
+			world_render(active_world.parent, -1, clip, pos, false);
+		}
+	}
+	
+	{ // Active World, recursive rendering
+		start_size := scalar_to_window(440.);
+		clip := BoxFloat.{window_width/2., window_height/2., start_size*1.25, start_size};
+		//clip := BoxFloat.{window_width/2., window_height/2., xx window_width, xx window_height};
+		pos_in_window := Vector2.{0,0};
+		world_render(active_world, 0, clip, pos_in_window);
+	}
 	
 	//@TODO UI Layout rendering
 
@@ -571,13 +580,15 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
     camera.zoom = get_nest_scale(nests);
     if focus != null {
     	fp := focus.position;
+    	camera.position = fp;
+    	/* @TODO disabled lerp, maybe make this a flag on camera
 		dist := distance(camera.position, fp);
 		if dist > 0.1 {
 		    camera.position = lerp(camera.position, fp, dt);
 		}
 		else {
 			camera.position = fp;
-		}
+		}*/
     }
 	else {
 		camera.position.x = 0;
@@ -665,7 +676,7 @@ get_nest_color :: (nests : float) -> Vector4 {
 	return lerp(BLUE, RED, nests / 3.);
 }
 
-world_render :: (using world : *World, nests : float, window_clip : BoxFloat, pos_in_window : Vector2) {
+world_render :: (using world : *World, nests : float, window_clip : BoxFloat, pos_in_window : Vector2, should_render_subworlds := true) {
 	assert(is_valid(world), "%", world.name);
 
 	{ // scissor clip for this world, cleared before next recursive call
@@ -768,12 +779,14 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 	clear_scissor();
 
 	// recursive actor rendering, only for render_entrance(..) for now.
-	//@OPTIMIZE copy-pasta on pos calc
-	for a : sorted_actors {
-		if a.proc_render {
-			pos := vec_world_to_window(a.position, world, n);
-			pos += pos_in_window; // recursively add our pos
-			a.proc_render(a, n, window_clip, pos);
+	//@OPTIMIZE we should simplify this to just find WorldEntrance and handle subworld_render(..) here
+	if should_render_subworlds {
+		for a : sorted_actors {
+			if a.proc_render {
+				pos := vec_world_to_window(a.position, world, n);
+				pos += pos_in_window; // recursively add our pos
+				a.proc_render(a, n, window_clip, pos);
+			}
 		}
 	}
 
