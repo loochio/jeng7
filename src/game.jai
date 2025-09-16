@@ -238,11 +238,12 @@ game_render :: (dt : float) {
 	pos_in_window := Vector2.{0,0};
 	world_render(active_world, 0, clip, pos_in_window);
 
-	{ // hero debug circle while we get rendering sorted
-		p := vec_world_to_window(active_world.hero.position, active_world);
-		r := scalar_to_window(16);
-		draw_circle(p, r, r-2, color=CYAN);
-	}
+	//@CLEAN
+	//{ // hero debug circle while we get rendering sorted
+	//	p := vec_world_to_window(active_world.hero.position, active_world);
+	//	r := scalar_to_window(16);
+	//	draw_circle(p, r, r-2, color=CYAN);
+	//}
 	
 	//@TODO UI Layout rendering
 

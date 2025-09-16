@@ -140,7 +140,7 @@ sprites : [TextureID.COUNT] Sprite;
 init_sprites :: () {
 	sprites[TextureID.Hero] 	= init_sprite(.Hero, frames=2, play_length=1);
 	sprites[TextureID.Entrance] = init_sprite(.Entrance);
-	sprites[TextureID.Exit] 	= init_sprite(.Exit);
+	sprites[TextureID.Exit] 	= init_sprite(.Exit, frames=4, play_length=1);
 	sprites[TextureID.ExitOutline] 	= init_sprite(.Exit, layer=-1);
 
 	sprites[TextureID.Bug] 		= init_sprite(.Bug, frames=4, play_length=0.25);
