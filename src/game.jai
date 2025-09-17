@@ -92,12 +92,8 @@ game_tick :: (dt : float) {
 	input_left = is_input_down(65) || is_input_down(.ARROW_LEFT); //a
 	input_right = is_input_down(68) || is_input_down(.ARROW_RIGHT); //d
 
-	//@TODO reimplement
-	//game_mouse_pos_world = coords_window_to_world(mouse_pos_window, *active_world.camera);
-
 	// Tick root worlds (ones without a parent)
-	// we start from the negative active world's depth, 
-	// keeping our active world ticked at depth=0
+	// we start from the negative active world's depth, keeping our active world ticked at depth=0
 	world_tick_pure(active_world, dt);
 	for worlds {
 		if !is_valid(*it) continue;
@@ -136,7 +132,7 @@ get_partition_index_from_world_pos :: (pos : float) -> s64 {
 	return xx (pos / PARTITION_CELL_SIZE);
 }
 
-physics_step :: (using world : *World, dt : float) {
+physics_tick :: (using world : *World, dt : float) {
 	if pause_physics return;
 
 	// update pos
@@ -641,7 +637,7 @@ world_tick_pure :: (using world : *World, dt : float) {
 		return;
 	}
 
-	physics_step(world, dt);
+	physics_tick(world, dt);
 
 	// actors
     for i : actors_head..actors_tail {
