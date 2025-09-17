@@ -127,6 +127,7 @@ engine_init :: (cfg : EngineConfig) {
 	
 		update_window_events();
 		for event : events_this_frame {
+			//@TODO build define out in RELEASE builds
 			if event.type == .QUIT || is_input_pressed(.ESCAPE) {
 	            window_quit = true;
 	            return;
@@ -163,13 +164,15 @@ engine_init :: (cfg : EngineConfig) {
     	// UI UPDATE - All UI rendering/polling needs to be handled after this point
 		ui_per_frame_update(window, xx window_width, xx window_height, now);
 
-	    // ~~~ Engine Input ~~~ @TODO should we move this out of the main loop?
+	    // ~~~ Engine Input ~~~ 
+	    //@TODO should we move this out of the main loop?
+	    //@TODO build define out in RELEASE builds
 		if is_input_pressed(96 /*`*/)  	{ 
 			terminal_enabled = !terminal_enabled;
 			terminal_id += 1;
 		}
 
-    	//@TODO feels hacky
+    	//@TODO feels hacky, we're only doing this to block kb input
     	if !terminal_enabled {
     		active_plugin.proc_tick(engine_dt);
     	}
@@ -219,6 +222,7 @@ set_plugin :: (plugin : string) {
 	active_plugin.proc_init();
 }
 
+//@TODO put the terminal_enabled block here?
 is_input_pressed :: (key : Key_Code) -> bool {
 	return input_button_states[key] & .START != 0;
 }
@@ -405,15 +409,20 @@ is_valid :: (str : string) -> bool{
 	return str.count > 0;
 }
 
+//@CLEAN we don't use this?
 linear_move :: (position : *Vector2, velocity : *Vector2, dt : float) {
     position.x += velocity.x * dt;
     position.y += velocity.y * dt;
 }
 
-//@CLEAN EPSILON :: 0.0001;
-
 is_nearly_zero :: (value : float) -> bool {
 	return value < EPSILON && value > -EPSILON;
+}
+
+//@TODO, replace that scuffed check in subworld_render()
+is_nearly_equal :: (a : float, b : float) -> bool {
+	assert(false);
+	return true;
 }
 
 get_window_aspect_scale :: () -> float {
@@ -620,6 +629,7 @@ load_sound :: (name: string) -> Sound_Data {
     return load_audio_file(path);
 }
 
+//@TODO need play_sound_random(pitch_min, pitch_max, vol_min, vol_max)
 play_sound :: (data: *Sound_Data, category := Sound_Category.GENERAL_SFX) -> *Sound_Stream {
     stream := Sound.make_stream(data, category);
     start_playing(stream);

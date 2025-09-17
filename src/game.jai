@@ -389,9 +389,6 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 	return w;
 }
 
-is_valid ::(world : *World) -> bool {
-	return world.flags & .Initialized != 0;
-}
 
 world_deinit :: (using world : *World) {
 	level_reset(*level);
@@ -434,6 +431,10 @@ get_world :: (name : string) -> *World{
 	}
 	assert(false, "failed to find world [%]\n", name);
 	return null;
+}
+
+is_valid ::(world : *World) -> bool {
+	return world.flags & .Initialized != 0;
 }
 
 exists :: (world_name : string) -> bool {
@@ -616,7 +617,6 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 // ticking the active world, not subject to nested time
 world_tick_pure :: (using world : *World, dt : float) {
 	// World transitions
-	//@TODO this only works for entrace, need to do somethign for exit
 	if transition_time > 0 {
 		transition_time -= dt;
 		transition_progress = 1. - (transition_time / WORLD_TRANSITION_TIME);
@@ -666,8 +666,6 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 	else {
 		dt = dt*nest_time;
 	}
-	//@CLEAN
-	//dt = ifx world.timeflags & .TimeFlipped then dt/nest_time else dt*nest_time;
 	age += dt;
 
     // cam lerp 
@@ -693,6 +691,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 	//@TODO not sure how to handle nested ticks for physics outside of active_world
 	//physics_step(world, dt);
 
+	// actor ticks
     for i : actors_head..actors_tail {
 		a := *actors[i];
     	if !is_valid(a) continue;
@@ -863,10 +862,10 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		draw_circle(p, size, color=G_WHITE);
 	}
 
-	// clear the scissor now so we can set a new one in our recursive render_entrance() call
+	// clear the scissor now so we can set a new one in our recursive subworld_render() call
 	clear_scissor();
 
-	// recursive actor rendering, only for render_entrance(..) for now.
+	// recursive actor rendering, only for subworld_render(..) for now.
 	//@OPTIMIZE we should simplify this to just find WorldEntrance and handle subworld_render(..) here
 	if should_render_subworlds {
 		for a : sorted_actors {
@@ -891,7 +890,6 @@ subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_wi
 	subclip.y = pos_in_window.y;
 
 	// only widen this subclip for the target transition entrance
-	//@TODO some duplicated code to improve
 	subclip_size := SUBCLIP_SIZE_DEFAULT;
 
 	if a.world.transition_world != null &&  a.world.transition_world == a.child_world {
@@ -919,7 +917,6 @@ subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_wi
 		}
 		else {
 			draw_box(intersection, get_world_color(a.child_world));
-			//draw_box(intersection, get_nest_color(nests+1)); @CLEAN
 		}
 	}
 }
