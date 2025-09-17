@@ -27,7 +27,6 @@ game_plugin := EnginePlugin.{
 startup_level_name :: "level_01";
 
 game_paused := false;
-game_over := false;
 input_up := false;
 input_down := false;
 input_right := false;
@@ -49,7 +48,6 @@ game_deinit :: () {
 
 game_begin :: () {
 	print("~~ Game Begin ~~\n");
-	game_over = false;
 	game_paused = false;
 
 	w := world_init(startup_level_name);
@@ -88,7 +86,6 @@ game_tick :: (dt : float) {
 	}
 
 	if game_paused  return;
-    if game_over  return;
 
 	input_up = is_input_down(87) || is_input_down(.ARROW_UP); //w
 	input_down = is_input_down(83) || is_input_down(.ARROW_DOWN); //s
@@ -307,14 +304,6 @@ game_render :: (dt : float) {
 		text_x := (window_width - text_width) / 2;
 	    text_y := window_height * 0.95;
 	    draw_prepared_text(hud_font, text_x, xx text_y, G_BLACK);
-	}
-
-	if game_over {
-		text := "You are DEAD - [ENTER] respawn";
-		text_width := prepare_text(hud_font, text);
-		text_x := (window_width - text_width) / 2;
-	    text_y := window_height * 0.8;
-	    draw_prepared_text(hud_font, text_x, xx text_y, G_RED3);
 	}
 
 	if debug_colliders {
@@ -660,12 +649,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 		a := *actors[i];
     	if !is_valid(a) continue;
 
-    	if (a.proc_tick) {
-    		// kind of sloppy that we have to check this but code below might be invalid 
-    		if game_over return;
-
-    		a.proc_tick(a, dt);
-    	}
+    	if (a.proc_tick) a.proc_tick(a, dt);
 
     	a.sprite.flipped = a.direction.x < 0;
 		sprite_tick(*a.sprite, dt);
@@ -702,7 +686,6 @@ SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
 SUBCLIP_OUTLINE_THICKNESS :: 8.;
 WORLD_NESTED_TIME :: 0.25;
 WORLD_TRANSITION_TIME :: 0.25; 
-//WORLD_TRANSITION_TIME :: 2.; //@CLEAN
 
 get_nest_scale :: (nests := 0.) -> float {
 	return pow(WORLD_NESTED_SCALE, nests);
