@@ -98,6 +98,7 @@ game_tick :: (dt : float) {
 	// Tick root worlds (ones without a parent)
 	// we start from the negative active world's depth, 
 	// keeping our active world ticked at depth=0
+	world_tick_pure(active_world, dt);
 	for worlds {
 		if !is_valid(*it) continue;
 		if it.parent == null world_tick(*it, dt, -active_world.depth);
@@ -285,9 +286,6 @@ game_render :: (dt : float) {
 	draw_text(5, "[ENTER] Restart");
 	draw_text(6, "[F2] Mute");
 
-	draw_text(8, "World: % | D[%] | Age=%", active_world.name, active_world.depth, 
-		formatFloat(active_world.age, trailing_width=2));
-
 	//actor count
 	draw_actor_count :: true;
 	if draw_actor_count {
@@ -295,8 +293,14 @@ game_render :: (dt : float) {
 		for active_world.actors {
 			if is_valid(*it) count += 1;
 		}
-		draw_text(9, "actors=%", count);
+		draw_text(7, "actors=%", count);
 	}
+
+	draw_text(9, "World: % | D[%] | Age=%", active_world.name, active_world.depth, 
+		formatFloat(active_world.age, trailing_width=2));
+
+	draw_text(10, "TimeFlags=%", active_world.timeflags);
+
 
 	if game_paused {
 		text := "PAUSED";
@@ -320,13 +324,14 @@ game_render :: (dt : float) {
 World :: struct {
 	using level : Level;
 	flags : WorldFlags;
+	timeflags : WorldTimeFlags;
 	depth := 0.; // nested level, float due to transition progress
 	age := 0.; // relative age, factoring in time dilation
 	parent : *World;
 
 	transition_time := 0.;
 	transition_progress := 0.; //[0-1]
-	transition_enter := true;
+	transition_enter := true; //@TODO move to WorldFlags
 	transition_actor : *Actor;
 	transition_world : *World;
 
@@ -345,15 +350,20 @@ World :: struct {
 }
 
 WorldFlags :: enum_flags u8 {
-	Initialized :: 1;
+	Initialized 	:: 1;
 }
+
+WorldTimeFlags :: enum_flags u8 {
+	TimeFlipped 	:: 1;
+	TimeInfinite 	:: 1<<1;
+}
+
 
 MAX_WORLDS :: 8;
 worlds : [MAX_WORLDS] World;
 MAX_ACTORS_PER_WORLD :: 4096;
 
 active_world : *World;
-//game_mouse_pos_world : Vector2; @TODO not used currently
 
 world_init :: (level_name : string, depth := 0.) -> *World {
 	w : *World;
@@ -363,6 +373,7 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 		worlds[it_index] = .{};
 		w = it;
 		w.flags |= .Initialized;
+		//w.flags |= .TimeFlipped; make time faster
 		w.depth = depth;
 		break;
 	}
@@ -373,8 +384,10 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 
 	// warps, linking worlds
 	for w.warps {
-		print("recursive world init: %\n", it.level_name);
 		assert(is_valid(it.level_name));
+		if exists(it.level_name) continue;
+
+		print("recursive world init: %\n", it.level_name);
 		world_init(it.level_name, depth+1);
 	}
 	return w;
@@ -399,8 +412,9 @@ world_begin :: (world : *World) {
 		a := spawn(world, it.type, it.position);
 		assert(a != null);
 	}
-	assert(world.hero_spawn_points.count > 0);
-	world.spawn_position = world.hero_spawn_points[world.hero_spawn_index];
+
+	if world.hero_spawn_points.count > 0 
+		world.spawn_position = world.hero_spawn_points[world.hero_spawn_index];
 
 	// warps, linking worlds
 	for world.warps {
@@ -426,6 +440,14 @@ get_world :: (name : string) -> *World{
 	return null;
 }
 
+exists :: (world_name : string) -> bool {
+	for * worlds {
+		if !is_valid(it) continue;
+		if it.name == world_name  return true;
+	}
+	return false;
+}
+
 // Convert a vector in the given world space
 // replacing coords_world_to_window() to accommadate new world system
 vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0.) -> Vector2 {
@@ -446,12 +468,15 @@ world_enter_begin :: (a : *Actor, world : *World) {
 	a.world.transition_world = world;
 	a.world.transition_enter = true;
 
+	// update the parent world we're warping to
+	// There can be multiple parent worlds associated with this world.
+	world.parent = a.world;
+
 	//@TODO need to consider how pausing world ticks effects other nested worlds
 	//CLEAN exit world?
 	//world.transition_time = WORLD_TRANSITION_TIME;
 
-	sfx := play_sound(.Warp);
-	//if sfx  sfx.user_volume_scale = random_get_within_range(0.15, 0.2);
+	play_sound(.Warp);
 }
 
 world_enter_end :: (world : *World) {
@@ -580,47 +605,20 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 		}
 	}
 
-	//@TODO reattach children
-	//for child : children {
-	//	print("moving child: type:% \n", child.type);
-	//	c := move_actor_to_world(child, world);
-	//	attach(a, c, c.relative_position);
-	//}
+	// update world conditions, wipe any time flags
+	//@TODO potentially sloppy, does this need to be more precise
+	for *w : worlds {
+		if !is_valid(w) continue;
+		w.timeflags = 0;
+	}
 
 	// cleanup the old actor now that we're done with it
 	deinit_actor(actor);
 	return new_actor;
 }
 
-//@TODO is there a way we could schedule an arbitrary tick func? like a Task (struct)
-world_tick :: (using world : *World, dt : float, nests := 0.) {
-	assert(is_valid(world));
-
-	// Time dilation, time moves faster in nested worlds (think Inception)
-	pure_dt := dt;
-	nest_time := get_nest_time(nests);
-	dt *= 1/nest_time;
-	age += dt;
-
-    // cam lerp 
-    camera.zoom = get_nest_scale(nests);
-    if focus != null {
-    	fp := focus.position;
-    	camera.position = fp;
-    	/* @TODO disabled lerp, maybe make this a flag on camera
-		dist := distance(camera.position, fp);
-		if dist > 0.1 {
-		    camera.position = lerp(camera.position, fp, dt);
-		}
-		else {
-			camera.position = fp;
-		}*/
-    }
-	else {
-		camera.position.x = 0;
-		camera.position.y = 0;
-	}
-	
+// ticking the active world, not subject to nested time
+world_tick_pure :: (using world : *World, dt : float) {
 	// World transitions
 	//@TODO this only works for entrace, need to do somethign for exit
 	if transition_time > 0 {
@@ -644,6 +642,60 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 	}
 
 	physics_step(world, dt);
+
+	// actors
+    for i : actors_head..actors_tail {
+		a := *actors[i];
+    	if !is_valid(a) continue;
+
+    	if a.proc_tick_pure a.proc_tick_pure(a, dt);
+    }
+}
+
+//@TODO is there a way we could schedule an arbitrary tick func? like a Task (struct)
+world_tick :: (using world : *World, dt : float, nests := 0.) {
+	assert(is_valid(world));
+
+	// Time dilation, time moves faster in nested worlds (think Inception)
+	pure_dt := dt;
+	nest_time := get_nest_time(nests);
+
+	// time calculations based on flags
+	if world.timeflags & .TimeInfinite {
+		dt = 0.;
+	}
+	else if world.timeflags & .TimeFlipped {
+		dt = dt/nest_time;
+	}
+	else {
+		dt = dt*nest_time;
+	}
+	//@CLEAN
+	//dt = ifx world.timeflags & .TimeFlipped then dt/nest_time else dt*nest_time;
+	age += dt;
+
+    // cam lerp 
+    camera.zoom = get_nest_scale(nests);
+    if focus != null {
+    	fp := focus.position;
+    	camera.position = fp;
+    	/* @TODO disabled lerp, maybe make this a flag on camera
+		dist := distance(camera.position, fp);
+		if dist > 0.1 {
+		    camera.position = lerp(camera.position, fp, dt);
+		}
+		else {
+			camera.position = fp;
+		}*/
+    }
+	else {
+		camera.position.x = 0;
+		camera.position.y = 0;
+	}
+	
+	
+	//@TODO not sure how to handle nested ticks for physics outside of active_world
+	//physics_step(world, dt);
 
     for i : actors_head..actors_tail {
 		a := *actors[i];
@@ -670,6 +722,11 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
     }
 
     // recursive world ticks, tick child worlds
+    if nests > WORLD_TICK_NEST_MAX {
+    	world.timeflags |= .TimeInfinite;
+    	return;
+    }
+
     for actors {
     	if !is_valid(*it) continue;
     	if it.child_world == null continue;
@@ -685,7 +742,12 @@ SUBCLIP_SIZE_DEFAULT :: 200.;
 SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
 SUBCLIP_OUTLINE_THICKNESS :: 8.;
 WORLD_NESTED_TIME :: 0.25;
+WORLD_TIME_PER_CYCLE :: 4.; // for the revolving outline marker
 WORLD_TRANSITION_TIME :: 0.25; 
+WORLD_TICK_NEST_MAX :: 10.;
+WORLD_RENDER_NEST_MAX :: 4.;
+
+
 
 get_nest_scale :: (nests := 0.) -> float {
 	return pow(WORLD_NESTED_SCALE, nests);
@@ -704,6 +766,13 @@ get_nest_color :: (nests : float) -> Vector4 {
 	return lerp(BLUE, RED, nests / 3.);
 }
 
+get_world_color :: (world : *World) -> Vector4 {
+	if world.timeflags & .TimeInfinite {
+		return G_BLACK;
+	}
+	return lerp(BLUE, RED, world.depth / 3.);
+}
+
 world_render :: (using world : *World, nests : float, window_clip : BoxFloat, pos_in_window : Vector2, should_render_subworlds := true) {
 	assert(is_valid(world), "%", world.name);
 
@@ -717,7 +786,8 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 	}
 
 	{ // background fill
-		color := world.background_fill * get_nest_color(world.depth);
+		color := world.background_fill * get_world_color(world);
+		//color := world.background_fill * get_nest_color(world.depth); @CLEAN
 		draw_square(.{window_clip.x, window_clip.y}, .{window_clip.w, window_clip.h}, color);
 	}
 	
@@ -786,13 +856,12 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 	{
 		outline := window_clip;
 		thickness := scalar_to_window(SUBCLIP_OUTLINE_THICKNESS) * nscale.x;
-		color := world.background_fill * get_nest_color(world.depth) * .75;
+		color := world.background_fill * get_world_color(world) * .75;
 		color.w = 1;
 		draw_box(outline, color, thickness);
 
 		// time marker, white box on outline
-		TIME_PER_CYCLE :: 30.;
-		progress := fmod_cycling(world.age,TIME_PER_CYCLE) / TIME_PER_CYCLE;
+		progress := fmod_cycling(world.age,WORLD_TIME_PER_CYCLE) / WORLD_TIME_PER_CYCLE;
 		p := get_box_percent_pos(*outline, progress);
 		size := scalar_to_window(8) * nscale.x;
 		draw_circle(p, size, color=G_WHITE);
@@ -829,15 +898,9 @@ subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_wi
 	//@TODO some duplicated code to improve
 	subclip_size := SUBCLIP_SIZE_DEFAULT;
 
-	if a.world.transition_world != null {
-		if a.world.transition_world == a.child_world {
-			//enter tranistion
-			subclip_max := max(window_width*1.25, window_height*1.25);
-			subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, a.world.transition_progress);
-		}
-		//else if a.world.transition_world == a.world.parent {
-		//	subclip_size := SUBCLIP_SIZE_DEFAULT;
-		//}
+	if a.world.transition_world != null &&  a.world.transition_world == a.child_world {
+		subclip_max := max(window_width*1.25, window_height*1.25);
+		subclip_size = lerp(SUBCLIP_SIZE_DEFAULT, subclip_max, a.world.transition_progress);
 	}
 	
 	box_size := subclip_size * nscale;
@@ -854,9 +917,14 @@ subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_wi
 		origin := pos_in_window;
 		origin.x -= window_width/2.;
 		origin.y -= window_height/2.;
-		world_render(a.child_world, nests+1, intersection, origin);
 
-		//@TODO render this an outline sprite, needs to respect the world_render(..) scissor
+		if nests <= WORLD_RENDER_NEST_MAX {
+			world_render(a.child_world, nests+1, intersection, origin);
+		}
+		else {
+			draw_box(intersection, get_world_color(a.child_world));
+			//draw_box(intersection, get_nest_color(nests+1)); @CLEAN
+		}
 	}
 }
 
@@ -1045,6 +1113,7 @@ Actor :: struct {
 
 	proc_begin : ActorProc;
 	proc_tick : ActorProc_Tick;
+	proc_tick_pure : ActorProc_Tick;
 	proc_render : ActorProc_Render;
 	proc_on_interact : ActorProc_Overlap;
 	proc_on_dropped : ActorProc;
@@ -1161,7 +1230,7 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 			a.world.focus = a;
 
-			a.proc_tick = (a : *Actor, dt : float) {
+			a.proc_tick_pure = (a : *Actor, dt : float) {
 				assert(a.world == active_world, "world=%, active=%", a.world.name, active_world.name);
 				assert(a.type == .Hero);
 

@@ -132,14 +132,9 @@ editor_tick :: (dt : float) {
 				}
 				case .Warps;{
 					//@TODO check .level file exists
-					if warp_level_name != editor_level.name {
-						warp := WarpSpawner.{ cursor_position, warp_level_name };
-						array_add(*editor_level.warps, warp);
-						dirty = true;
-					}
-					else {
-						print("Warp [%] cannot have the same name as level: %\n", warp_level_name, editor_level.name);
-					}
+					warp := WarpSpawner.{ cursor_position, warp_level_name };
+					array_add(*editor_level.warps, warp);
+					dirty = true;
 				}
 			}
 		}

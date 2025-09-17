@@ -410,6 +410,12 @@ linear_move :: (position : *Vector2, velocity : *Vector2, dt : float) {
     position.y += velocity.y * dt;
 }
 
+//@CLEAN EPSILON :: 0.0001;
+
+is_nearly_zero :: (value : float) -> bool {
+	return value < EPSILON && value > -EPSILON;
+}
+
 get_window_aspect_scale :: () -> float {
 	if window_aspect > config.aspect {
 		return window_height / cast(float)config.world_height;

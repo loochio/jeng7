@@ -27,8 +27,8 @@ engine_cfg := EngineConfig.{
 
 	vsync = false,
 
-	//startup_plugin = "game",
-	startup_plugin = "editor",
+	startup_plugin = "game",
+	//startup_plugin = "editor",
 };
 
 
