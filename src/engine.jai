@@ -438,7 +438,6 @@ update_mouse :: (){
 	if success {
 		mouse_pos_window.x = cast(float)x;
 		mouse_pos_window.y = cast(float)(window_height - y); // invery mouse y to start at bottom
-		//mouse_pos_world = coords_window_to_world(mouse_pos_window);  @CLEAN
 	}
 }
 

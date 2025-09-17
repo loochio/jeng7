@@ -71,6 +71,7 @@ editor_deinit :: () {
 editor_begin :: () {
 	print("~~~ Editor Begin ~~~ start_level=% | editor_level=%\n", start_level, editor_level.name);
 	editor_load(start_level);
+	editor_camera.position = .{0,0};
 }
 
 editor_end :: () {
@@ -83,26 +84,25 @@ editor_tick :: (dt : float) {
 	cursor_in_deadzone = is_cursor_deadzone(mouse_pos_window);
 
 	if !cursor_in_deadzone {
-		mp := mouse_pos_window; //@TODO reimplement
-		//mp := coords_window_to_world(mouse_pos_window, *editor_camera);
+		mv := vec_window_to_editor(mouse_pos_window);
 		if cursor_snap_to_grid {
-			gx := cast(s64)(mp.x / GRID_SIZE);
-			gx2 : float = ifx mp.x >= 0 then gx + 0.5 else gx - 0.5;
+			gx := cast(s64)(mv.x / GRID_SIZE);
+			gx2 : float = ifx mv.x >= 0 then gx + 0.5 else gx - 0.5;
 			cursor_position.x = gx2 * GRID_SIZE;
 
-			gy := cast(s64)(mp.y / GRID_SIZE);
-			gy2 : float = ifx mp.y >= 0 then gy + 0.5 else gy - 0.5;
+			gy := cast(s64)(mv.y / GRID_SIZE);
+			gy2 : float = ifx mv.y >= 0 then gy + 0.5 else gy - 0.5;
 			cursor_position.y = gy2 * GRID_SIZE;
 		}
 		else {
-			cursor_position = mp;
+			cursor_position = mv;
 		}
 
 		// tools
 		if is_input_pressed(.MOUSE_BUTTON_LEFT) 
-			|| (is_input_down(.MOUSE_BUTTON_LEFT) && is_input_down(.SHIFT)){
+			|| (is_input_down(.MOUSE_BUTTON_LEFT) && is_input_down(.SHIFT))
+		{
 			if tool== {
-
 				case .PlaceSpawner; {
 					if prev_placement != cursor_position {
 						prev_placement = cursor_position;
@@ -162,8 +162,6 @@ editor_tick :: (dt : float) {
 
 	// actor type
 	//@TODO need to pull from a valid list of spawnable actors
-	//low := ActorType.Hero;
-	//high := ActorType.WorldExit;
 	low, high := enum_range(ActorType);
 	if is_input_pressed(.PAGE_UP) {
 		actor_to_spawn = ifx actor_to_spawn == xx high then xx low else actor_to_spawn+1;
@@ -184,9 +182,7 @@ editor_tick :: (dt : float) {
 }
 
 editor_render :: (dt : float) {
-	//@CLEAN origin := coords_world_to_window(.{0,0}, *editor_camera);
-	origin := Vector2.{0,0};
-	draw_circle(origin, 5, color=GREEN);
+	origin := vec_editor_to_window(.{0,0});
 
 	//grid
 	size := scalar_to_window(GRID_SIZE);
@@ -200,32 +196,28 @@ editor_render :: (dt : float) {
 	// draw spawners
 	for editor_level.spawners {
 		sprite := get_actor_sprite(it.type);
-		render_sprite(sprite, it.position);
-		//@CLEAN render_sprite(sprite, it.position, *editor_camera);
+		pos := vec_editor_to_window(it.position);
+		render_sprite(sprite, pos);
 	}
 	// hero spawn points, RED = index 0
 	for editor_level.hero_spawn_points {
-		//p := coords_world_to_window(it, *editor_camera); @CLEAN
-		p := it;
+		pos := vec_editor_to_window(it);
 		r := GRID_SIZE;
 		c := lerp(RED, GREEN, it_index/cast(float)editor_level.hero_spawn_points.count);
-		draw_circle(p, r, r-8, color=c);
+		draw_circle(pos, r, r-8, color=c);
 		sprite := get_actor_sprite(.Hero);
-		render_sprite(sprite, it);
-		//@CLEAN render_sprite(sprite, it, *editor_camera);
+		render_sprite(sprite, pos);
 	}
 
 	// warps
 	for editor_level.warps {
-		//p := coords_world_to_window(it.position, *editor_camera);
-		p := it.position;
+		pos := vec_editor_to_window(it.position);
 		r := 12.;
-		draw_circle(p, r, r-8, color=GREEN);
+		draw_circle(pos, r, r-8, color=GREEN);
 	}
 
 	//cursor
-	//cp := coords_world_to_window(cursor_position, *editor_camera);
-	cp := cursor_position;
+	cp := vec_editor_to_window(cursor_position);
 	draw_box(.{cp.x, cp.y, size, size}, ifx cursor_in_deadzone then BLACK else YELLOW, 8);
 
 	//deadzone
@@ -244,6 +236,9 @@ editor_render :: (dt : float) {
 	draw_text(6, "Spawners=%", editor_level.spawners.count);
 	draw_text(7, "Hero Spawn Points=%", editor_level.hero_spawn_points.count);
 	draw_text(8, "warps=%", editor_level.warps);
+
+	draw_text(9, "cam=%", editor_camera.position);
+	draw_text(10, "origin=%", origin);
 
 	// UI buttons
     x := 10.;
@@ -284,6 +279,9 @@ editor_render :: (dt : float) {
 			print("new warp: %\n", warp_level_name);
 		}
 	}
+
+	// debug green
+	draw_circle(origin, 5, color=GREEN);
 }
 
 editor_save :: () {
@@ -332,4 +330,27 @@ editor_new_level :: (name : string) {
 
 is_cursor_deadzone :: (pos : Vector2) -> bool {
 	return pos.x < deadzone.x;
+}
+
+vec_editor_to_window :: (v : Vector2) -> Vector2 {
+	result := v - editor_camera.position;
+	scale := get_window_aspect_scale();
+	scale *= editor_camera.zoom;
+	result.x *= scale;
+	result.y *= scale;
+	result.x += window_width/2.;
+	result.y += window_height/2.;
+	return result;
+}
+
+vec_window_to_editor :: (v : Vector2) -> Vector2 {
+	result := v;
+	result.x -= window_width/2.;
+	result.y -= window_height/2.;
+	scale := get_window_aspect_scale();
+	scale /= editor_camera.zoom;
+	result.x /= scale;
+	result.y /= scale;
+	result = result + editor_camera.position;
+	return result;
 }
