@@ -27,16 +27,22 @@ engine_cfg := EngineConfig.{
 
 	vsync = false,
 
-	startup_plugin = "game",
+	//startup_plugin = "game",
 	//startup_plugin = "editor",
+	//startup_plugin = "editor2",
 };
 
 
 main :: () {
+	print("main - detected default plugin [%]\n", default_plugin); // defined in build.jai
+	engine_cfg.startup_plugin = default_plugin;
+
 	array_add(*engine_cfg.plugins, game_plugin);
 	array_add(*engine_cfg.plugins, editor_plugin);
+	array_add(*engine_cfg.plugins, editor2_plugin);
 	engine_init(engine_cfg);
 }
 
 #load "game.jai";
 #load "editor.jai";
+#load "editor2.jai";

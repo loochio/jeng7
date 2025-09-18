@@ -15,9 +15,6 @@ root_path : string;
 asset_path : string;
 img_path : string;
 
-debug_ui_enabled := true;
-
-ENABLE_FRUSTRUM_CULLING :: false;
 
 EngineConfig :: struct {
 	name : string = "Default";
@@ -58,6 +55,14 @@ EnginePlugin :: struct {
 	proc_render : EngineProc_Tick;
 }
 
+debug_ui_enabled := true; //@TODO probably clean this up
+
+ENABLE_FRUSTRUM_CULLING :: false;
+
+WINDOW_SCALE_DEFAULT :: 1.;
+forced_window_scale_x := WINDOW_SCALE_DEFAULT;
+forced_window_scale_y := WINDOW_SCALE_DEFAULT;
+
 engine_dt: float = 0.;
 last_time:  float64;
 DT_MAX : float : 0.15;
@@ -67,7 +72,15 @@ fps : float = 0.;
 hud_font : *Dynamic_Font;
 hud_font_factor := 0.025;
 hud_font_pixel_height := 0;
-hud_current_theme: s32 = xx Default_Themes.Default;
+
+//hud_current_theme: s32 = xx Default_Themes.Default;
+//hud_current_theme: s32 = xx Default_Themes.Grayscale;
+//hud_current_theme: s32 = xx Default_Themes.Bentonite;
+//hud_current_theme: s32 = xx Default_Themes.Nimbus;
+hud_current_theme: s32 = xx Default_Themes.Blood_Vampire;
+//hud_current_theme: s32 = xx Default_Themes.Freddie_Freeloader;
+//hud_current_theme: s32 = xx Default_Themes.HIGH_CONTRAST;
+
 hud_theme: Overall_Theme;
 terminal_enabled := false;
 
@@ -435,14 +448,14 @@ get_window_aspect_scale :: () -> float {
 }
 
 scalar_to_window :: (value : float) -> float {
-	return value * get_window_aspect_scale();
+	return value * get_window_aspect_scale() * forced_window_scale_x;
 }
 
 vec_to_window :: (window_pos : Vector2) -> Vector2 {
 	result := window_pos;
 	scale := get_window_aspect_scale();
-	result.x *= scale;
-	result.y *= scale;
+	result.x *= scale * forced_window_scale_x;
+	result.y *= scale * forced_window_scale_y;
 	result.x += window_width/2.;
 	result.y += window_height/2.;
 	return result;
@@ -554,8 +567,8 @@ render_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}
     uv3x := Vector2.{subX / texW, (subY+subH) / texH};
 
     ws := get_window_aspect_scale();
-    h := Vector2.{frame.coords.w * .5 * ws * scale.x, 0};
-    v := Vector2.{0, frame.coords.h * .5 * ws * scale.y};
+    h := Vector2.{frame.coords.w * .5 * ws * scale.x * forced_window_scale_x, 0};
+    v := Vector2.{0, frame.coords.h * .5 * ws * scale.y * forced_window_scale_y};
 
     if sprite.flipped {
     	h *= -1;
@@ -924,8 +937,10 @@ begins_with_count :: (str: string, prefix: string) -> int {
     return prefix.count;
 }
 
+//@TODO these terminal commands have entered game design territory
+// we'll have to build define these out. maybe? maybe we leave some of these enabled?
 register_commands :: () {
-	register_cmd("test", (args: .. Any) { print("CMD test args=%\n", args); });
+	//register_cmd("test", (args: .. Any) { print("CMD test args=%\n", args); });
 	register_cmd("toggle_ui", (args: .. Any) { debug_ui_enabled = !debug_ui_enabled; });
 	register_cmd("toggle_mute", (args: .. Any) { toggle_mute(); });
 	register_cmd("fps", (args: .. Any) {  config.fps = ifx config.fps == -1 then 144 else -1; });

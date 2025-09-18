@@ -36,8 +36,7 @@ debug_colliders := false;
 
 game_init :: () {
 	print("~~ Game Init ~~ \n");
-	register_cmd("game_restart", (args: .. Any) { game_restart(); });
-	register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
+	register_cheats();
 	game_begin();
 }
 
@@ -451,8 +450,8 @@ vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0.) -> Vec
 	result := world_pos - world.camera.position;
 	scale := get_window_aspect_scale();
 	scale *= get_nest_scale(nests);
-	result.x *= scale;
-	result.y *= scale;
+	result.x *= scale * forced_window_scale_x;
+	result.y *= scale * forced_window_scale_y;
 	result.x += window_width/2.;
 	result.y += window_height/2.;
 	return result;
@@ -604,9 +603,10 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 
 	// update world conditions, wipe any time flags
 	//@TODO potentially sloppy, does this need to be more precise
+	//@TODO2 yes, this needs to be more precise for TimeInfinite (for now)
 	for *w : worlds {
 		if !is_valid(w) continue;
-		w.timeflags = 0;
+		w.timeflags &= ~.TimeInfinite;
 	}
 
 	// cleanup the old actor now that we're done with it
@@ -1203,6 +1203,10 @@ deinit_actor :: (a : *Actor) {
 	a.flags = 0;
 }
 
+// hero configs
+HERO_SPEED_DEFAULT 	:: Vector2.{50,50};
+HERO_SPEED_FAST 	:: Vector2.{200,200};
+
 spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 	a := init_actor(world);
 	a.type = type;
@@ -1211,7 +1215,7 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 	
 	if a.type == {
 		case .Hero; {
-			a.speed = .{50,50};
+			a.speed = HERO_SPEED_DEFAULT;
 			a.body.type = .Dynamic;
 			a.body.size = .{12,12};
 			a.body.is_a = .Pawn | .Hero;
@@ -1439,6 +1443,53 @@ interact :: (a : *Actor, interactor : *Actor) {
 	assert(interactor != null);
 	if a.proc_on_interact 
 		a.proc_on_interact(a, interactor);
+}
+
+register_cheats :: () {
+
+	//@DESIGN these terminal commands are meant to be found in game.
+	// Knowledge based keys, "unlocks" when entered into the game for the first time
+	// Store that unlock state in GameCareer save profile
+	//@TODO terminal auto complete only shows commands you have unlocked
+	register_cmd("reset", (args: .. Any) { game_restart(); });
+
+	register_cmd("teser", (args: .. Any) { 
+		// reset and reverse time
+		game_restart(); 
+		for * worlds {
+			if !is_valid(it) continue;
+			it.timeflags |= .TimeFlipped;
+		}
+	});
+
+	register_cmd("rseet", (args: .. Any) { 
+		// typo, deliberately fuck up the screen bc why not?
+		//@TODO the engine level mod needs to be undone after the next restart
+		// Probably stuff this into a GameState struct, ensure we wipe it every restart
+		game_restart(); 
+		//forced_window_scale_y *= -2.; 
+		forced_window_scale_y *= -1.; //@TODO needs to be undone
+		//forced_window_scale_x *= -1.; //@TODO needs to be undone
+		print("force_window_scale_y = %\n", forced_window_scale_y);
+
+		//@DESIGN with the way this fucks up the sprite translations,
+		// I can see a fun idea where the sprite moves out of the way, and we can see behind it.
+		// Put a secret behind there?
+	});
+
+	register_cmd("fast", (args: .. Any) { 
+		// make hero fast
+		//@DESIGN a more fun idea would decrease the hero tick dt
+		active_world.hero.speed = HERO_SPEED_FAST;
+	});
+
+	register_cmd("slow", (args: .. Any) { 
+		// make hero slow, default
+		active_world.hero.speed = HERO_SPEED_DEFAULT;
+	});
+
+	//@TODO hid this behind a DEBUG build define
+	//register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
 }
 
 #load "engine.jai";
