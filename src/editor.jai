@@ -1,4 +1,5 @@
 // editor.jai - Game F
+// Editor v2 - 19 Sept 2025
 
 
 editor_plugin := EnginePlugin.{
@@ -14,15 +15,6 @@ editor_plugin := EnginePlugin.{
 start_level :: "level_01";
 editor_level : Level;
 
-EditorTool :: enum u8 {
-	PlaceSpawner;
-	EraseSpawner;
-	HeroSpawner;
-	Warps;
-}
-
-tool := EditorTool.PlaceSpawner;
-actor_to_spawn : ActorType;
 
 GRID_SIZE :: 32.;
 cursor_size := 1;
@@ -35,6 +27,39 @@ deadzone : Vector2;
 editor_camera : Camera;
 warp_level_name := "b";
 
+// UI v2
+subwindow_info_level 	: Subwindow_Info;
+subwindow_info_tools 	: Subwindow_Info;
+subwindow_info_details 	: Subwindow_Info;
+
+level_to_load := "b";
+
+
+//@CLEAN
+//EditorToolType :: enum u8 {
+//	Actor;
+//	EraseSpawner; //@TODO remove
+//	HeroSpawner;  // player start pos
+//	Warps;		  // level transitions
+//}
+
+//tool := EditorToolType.Actor;
+
+EditorTool :: struct {
+	name : string;
+	proc_tick : EditorToolProc_Tick;
+	proc_render : EditorToolProc_Render;
+	proc_render_in_subwindow : EditorToolProc_RenderSubWindow;
+}
+
+EditorToolProc_Tick :: #type (dt : float);
+EditorToolProc_Render :: #type (dt : float);
+EditorToolProc_RenderSubWindow :: #type (state: *Subwindow_State, r: Rect, data: *void);
+
+active_tool : EditorTool = tool_actor;
+
+//@CLEAN put in actor tool
+//actor_to_spawn : ActorType;
 
 editor_init :: () {
 	print("~~~ Editor init ~~~\n");
@@ -60,6 +85,27 @@ editor_init :: () {
 		//editor_load(prev_level_name); //@CLEAN
 	} );
 
+
+	// Init subwindow UI
+	{ // level 
+        r := get_rect(0, xx (window_height-120), 600, 120);
+        subwindow_info_level.rect = r;
+        subwindow_info_level.draw = draw_subwindow_level;
+        subwindow_info_level.title_text = "Level";
+    }
+    { // tools
+        r := get_rect(0, 0, 300, window_height/2.);
+        subwindow_info_tools.rect = r;
+        subwindow_info_tools.draw = draw_subwindow_tools;
+        subwindow_info_tools.title_text = "Tools";
+    }
+    { // details 
+        r := get_rect(xx (window_width-300), xx (window_height-300), 300, 300);
+        subwindow_info_details.rect = r;
+        subwindow_info_details.draw = draw_subwindow_details;
+        subwindow_info_details.title_text = "Details";
+    }
+
 	editor_begin();
 }
 
@@ -74,11 +120,10 @@ editor_begin :: () {
 	editor_camera.position = .{0,0};
 }
 
-editor_end :: () {
-	//@TODO unused currently
-}
+editor_end :: () { /*@TODO unused currently*/ }
 
 editor_tick :: (dt : float) {
+	//@TODO remove deadzone concept
 	deadzone.x = window_width*0.15;
 	deadzone.y = xx window_height;
 	cursor_in_deadzone = is_cursor_deadzone(mouse_pos_window);
@@ -98,12 +143,17 @@ editor_tick :: (dt : float) {
 			cursor_position = mv;
 		}
 
-		// tools
+		active_tool.proc_tick(dt);
+
+		//@CLEAN
+		//if is_input_pressed(.MOUSE_BUTTON_LEFT) active_tool.proc();
+
+		/*
 		if is_input_pressed(.MOUSE_BUTTON_LEFT) 
 			|| (is_input_down(.MOUSE_BUTTON_LEFT) && is_input_down(.SHIFT))
 		{
 			if tool== {
-				case .PlaceSpawner; {
+				case .Actor; {
 					if prev_placement != cursor_position {
 						prev_placement = cursor_position;
 						spawner := ActorSpawner.{actor_to_spawn, cursor_position};
@@ -141,13 +191,17 @@ editor_tick :: (dt : float) {
 		else if is_input_released(.MOUSE_BUTTON_LEFT) {
 			prev_placement = .{99999,99999}; //random big number that we'll never collide with
 		}
+		*/
+		if is_input_released(.MOUSE_BUTTON_LEFT) {
+			prev_placement = .{99999,99999}; //random big number that we'll never collide with
+		}
 	}
 
-	// tool selects
-	if is_input_pressed(49) tool = .PlaceSpawner;
-	else if is_input_pressed(50) tool = .EraseSpawner;
-	else if is_input_pressed(51) tool = .HeroSpawner;
-	else if is_input_pressed(52) tool = .Warps;
+	// tool selects, @CLEAN
+	//if is_input_pressed(49) tool = .PlaceSpawner;
+	//else if is_input_pressed(50) tool = .EraseSpawner;
+	//else if is_input_pressed(51) tool = .HeroSpawner;
+	//else if is_input_pressed(52) tool = .Warps;
 
 	EDITOR_CAM_SPEED :: 5.;
 	if is_input_down(.ARROW_UP) 		editor_camera.position.y += EDITOR_CAM_SPEED;
@@ -155,15 +209,15 @@ editor_tick :: (dt : float) {
 	if is_input_down(.ARROW_RIGHT) 		editor_camera.position.x += EDITOR_CAM_SPEED; 
 	if is_input_down(.ARROW_LEFT) 		editor_camera.position.x -= EDITOR_CAM_SPEED;
 
-	// actor type
+	//@CLEAN actor type
 	//@TODO need to pull from a valid list of spawnable actors
-	low, high := enum_range(ActorType);
-	if is_input_pressed(.PAGE_UP) {
-		actor_to_spawn = ifx actor_to_spawn == xx high then xx low else actor_to_spawn+1;
-	}
-	if is_input_pressed(.PAGE_DOWN) {
-		actor_to_spawn = ifx actor_to_spawn == xx low then xx high else actor_to_spawn-1;
-	}
+	//low, high := enum_range(ActorType);
+	//if is_input_pressed(.PAGE_UP) {
+	//	actor_to_spawn = ifx actor_to_spawn == xx high then xx low else actor_to_spawn+1;
+	//}
+	//if is_input_pressed(.PAGE_DOWN) {
+	//	actor_to_spawn = ifx actor_to_spawn == xx low then xx high else actor_to_spawn-1;
+	//}
 
 	// save
 	if is_input_pressed(83 /*s*/) && is_input_down(.CTRL) {
@@ -215,6 +269,11 @@ editor_render :: (dt : float) {
 	cp := vec_editor_to_window(cursor_position);
 	draw_box(.{cp.x, cp.y, size, size}, ifx cursor_in_deadzone then BLACK else YELLOW, 8);
 
+
+
+	//~~~~ UI (old) ~~~~~
+
+	/*
 	//deadzone
 	draw_square(.{deadzone.x/2, deadzone.y/2}, .{deadzone.x, deadzone.y}, G_PURPLE);
 
@@ -275,8 +334,82 @@ editor_render :: (dt : float) {
 		}
 	}
 
-	// debug green
+*/
+
+
+	//@CLEAN debug orgin
 	draw_circle(origin, 5, color=GREEN);
+
+
+	//~~~~ UI v2 ~~~~~
+
+    if subwindow_info_level.open {  // The Subwindow starts open, but pressing the Close button can close it.
+        hud_theme.subwindow_theme.resize_controls |= .SNAP;
+        subwindow_state := add_subwindow(*subwindow_info_level, *hud_theme.subwindow_theme);
+        hud_theme.subwindow_theme.resize_controls &= ~.SNAP;
+    }
+
+    if subwindow_info_tools.open {  // The Subwindow starts open, but pressing the Close button can close it.
+        hud_theme.subwindow_theme.resize_controls |= .SNAP;
+        subwindow_state := add_subwindow(*subwindow_info_tools, *hud_theme.subwindow_theme);
+        hud_theme.subwindow_theme.resize_controls &= ~.SNAP;
+    }
+
+    if subwindow_info_details.open {  // The Subwindow starts open, but pressing the Close button can close it.
+        hud_theme.subwindow_theme.resize_controls |= .SNAP;
+        subwindow_state := add_subwindow(*subwindow_info_details, *hud_theme.subwindow_theme);
+        hud_theme.subwindow_theme.resize_controls &= ~.SNAP;
+    }
+
+    draw_popups();
+}
+
+draw_subwindow_level :: (state: *Subwindow_State, r: Rect, data: *void) {
+	line := 1;
+	p := 4.;
+	lh := cast(float)hud_font_pixel_height+p;
+	{// level name 
+		r0 := Rect.{r.x, r.y+r.h-lh, r.w/2., lh};
+		level_name := tprint("% %", editor_level.name, ifx dirty then "[*]" else "");
+    	label(r0, level_name, *hud_theme.label_theme);
+	}
+	bw := r.w*.25;
+	{ // save 
+		r0 := Rect.{r.x+r.w/2., r.y+r.h-(lh*line), bw, lh};
+		if button(r0, "Save", *hud_theme.button_theme) { editor_save(); }
+	}
+	if dirty { // clear/ reload 
+		r0 := Rect.{r.x+r.w/2.+bw, r.y+r.h-(lh*line), bw, lh};
+		if button(r0, "Clear", *hud_theme.button_theme) { editor_reload(); }
+	}
+
+    line += 1;
+	{ // load 
+		r0 := Rect.{r.x, r.y+r.h-(lh*line)-p, bw, lh};
+		if button(r0, "Load", *hud_theme.button_theme) { 
+			editor_load(level_to_load);
+			level_to_load = ""; //@TODO this doesn't clear our input text, why?
+		}
+
+		r1 := Rect.{r0.x+r0.w, r0.y, bw, r0.h};
+		if button(r1, "New", *hud_theme.button_theme) { 
+			editor_new_level(level_to_load); 
+			level_to_load = "";
+		}
+
+		text_theme := hud_theme.text_input_theme;
+		text_theme.alignment = .Left;
+		text_theme.font = hud_font;
+
+		r2 := Rect.{r1.x+r1.w, r1.y, bw*2, r1.h};
+		action, text, state := text_input(r2, level_to_load, *text_theme);
+		level_to_load = state.text;
+		line += 1;
+	}
+}
+
+
+draw_subwindow_details :: (state: *Subwindow_State, r: Rect, data: *void) {
 }
 
 editor_save :: () {
@@ -286,6 +419,11 @@ editor_save :: () {
 }
 
 editor_load :: (name : string) {
+	if !is_valid_level_name(name) {
+		print("Failed to load, level name [%] did not exist\n", name);
+		return;
+	}
+
 	//@TODO do we bake is_valid into the level_reset?
 	if is_valid(*editor_level)
 		level_reset(*editor_level);
@@ -318,6 +456,11 @@ editor_erase_hero_spawns :: () {
 }
 
 editor_new_level :: (name : string) {
+	if is_valid_level_name(name) {
+		print("Level name already exists [%]\n", name);
+		return;
+	}
+
 	level_reset(*editor_level);
 	editor_level.name = sprint(name);
 	print("Editting new level: %\n", editor_level.name);
@@ -349,3 +492,75 @@ vec_window_to_editor :: (v : Vector2) -> Vector2 {
 	result = result + editor_camera.position;
 	return result;
 }
+
+draw_subwindow_tools :: (state: *Subwindow_State, r: Rect, data: *void) {
+	// active tool info
+	p := 4.;
+	lh := cast(float)hud_font_pixel_height+p;
+	r0 := Rect.{r.x, r.y+r.h-lh, r.w, lh};
+	name := tprint("Active Tool: %", active_tool.name);
+    label(r0, name, *hud_theme.label_theme);
+
+    r1 := Rect.{r.x,r.y, r.w, r.h-r0.h};
+	active_tool.proc_render_in_subwindow(state, r1, data);
+}
+
+tool_actor :: EditorTool.{
+	name = "Actors",
+	proc_tick = tool_actor_tick,
+	proc_render = tool_actor_render,
+	proc_render_in_subwindow = tool_actor_render_in_subwindow,
+};
+
+tool_actor_selection : ActorType;
+
+tool_actor_tick :: (dt : float) {
+	if is_input_pressed(.MOUSE_BUTTON_LEFT) { 
+		if prev_placement != cursor_position {
+			prev_placement = cursor_position;
+			spawner := ActorSpawner.{tool_actor_selection, cursor_position};
+			array_add(*editor_level.spawners, spawner);
+			dirty = true;
+		}
+	}
+}
+
+tool_actor_render :: (dt : float) {}
+
+tool_actor_render_in_subwindow :: (state: *Subwindow_State, r: Rect, data: *void) {
+	p := 4.;
+	lh := cast(float)hud_font_pixel_height+p;
+	r0 := Rect.{r.x, r.y+r.h-lh, r.w, lh};
+	actor := tprint("Actor Type: %", tool_actor_selection);
+	theme : = hud_theme.label_theme;
+	theme.alignment = .Left;
+    label(r0, actor, *theme);
+
+    //@TODO loop through actor pallet, draw button
+    COLUMNS :: 4;
+    AB :: 64.;
+    br := Rect.{r.y, r.y, AB, AB};
+    root := Vector2.{r.x, r.y};
+    index := 0;
+
+	for enum_values_as_s64(ActorType) {
+		type := cast(ActorType)it;
+
+		if !is_valid_actor_spawner(type) continue;
+
+		//@TODO render this button with the sprite
+    	//sprite := get_actor_sprite(it.type);
+    	textureid := get_actor_tid(type);
+    	tex := *get_texture(textureid).texture;
+    	assert(tex != null);
+    	col := (index % COLUMNS) * AB;
+    	br.x = root.x + col;
+    	row := (index / COLUMNS) * AB;
+    	br.y = root.y + row;
+    	if button(br, "", *hud_theme.button_theme, texture=tex) {
+    		tool_actor_selection = type;
+	    }
+	    index +=1 ;
+    }
+}
+

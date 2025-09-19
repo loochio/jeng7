@@ -221,10 +221,11 @@ set_plugin :: (plugin : string) {
 		}
 	}
 
-	if active_plugin == prev {
-		print("Failed to switch to plugin [%]\n", plugin);
-		return;
-	}
+	//@CLEAN disabled reloading
+	//if active_plugin == prev {
+	//	print("Failed to switch to plugin [%]\n", plugin);
+	//	return;
+	//}
 
 	if prev != null {
 		print("Plugin exiting from [%]\n", prev);
@@ -965,6 +966,7 @@ register_commands :: () {
 #import "Basic";
 #import "System";
 #import "File";
+#import "File_Utilities";
 #import "String";
 #import "Window_Creation";
 #import "Input";

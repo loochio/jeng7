@@ -1014,6 +1014,11 @@ level_save :: (level : *Level) {
 	print("Saved %\n", path);
 }
 
+is_valid_level_name :: (name : string) -> bool {
+	path := tprint("levels/%.level", name);
+	return file_exists(path);
+}
+
 level_load :: (name : string, level : *Level) -> bool {
 	path := tprint("levels/%.level", name);
 	buffer, success := read_entire_file(path);
@@ -1172,6 +1177,18 @@ ActorProc_Overlap :: #type (a0 : *Actor, a1 : *Actor);
 
 is_valid :: (actor : *Actor) -> bool{
 	return actor.type != .EMPTY && actor.flags & .Initialized != 0;
+}
+
+
+is_valid_actor_spawner :: (type : ActorType) -> bool {
+	if type== {
+		case .EMPTY; return false;
+		case .Hero; return false;
+		case .Marker; return false;
+		case .WorldEntrance; return false;
+		case .WorldExit; return false;
+	}
+	return true;
 }
 
 init_actor :: (world : *World) -> *Actor{

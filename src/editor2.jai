@@ -1,6 +1,8 @@
 // editor2.jai - Game F - 18 Sept 2025
 // Level Editor - v2
 
+//@TODO delete
+
 
 editor2_plugin := EnginePlugin.{
 	name = "editor2",
