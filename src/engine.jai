@@ -84,7 +84,12 @@ hud_current_theme: s32 = xx Default_Themes.Blood_Vampire;
 hud_theme: Overall_Theme;
 terminal_enabled := false;
 
+// Input
 mouse_pos_window : Vector2;
+input_mod_ctrl := false;
+input_mod_alt := false;
+input_mod_shift := false;
+ui_hit_this_frame := false;
 
 Camera :: struct {
 	position : Vector2;
@@ -175,9 +180,14 @@ engine_init :: (cfg : EngineConfig) {
     	if engine_dt > DT_MAX engine_dt = DT_MAX;
 
     	// UI UPDATE - All UI rendering/polling needs to be handled after this point
+    	ui_hit_this_frame = false;
 		ui_per_frame_update(window, xx window_width, xx window_height, now);
 
 	    // ~~~ Engine Input ~~~ 
+	    input_mod_ctrl = is_input_down(.CTRL);
+	    input_mod_alt = is_input_down(.ALT);
+	    input_mod_shift = is_input_down(.SHIFT);
+
 	    //@TODO should we move this out of the main loop?
 	    //@TODO build define out in RELEASE builds
 		if is_input_pressed(96 /*`*/)  	{ 
@@ -388,6 +398,11 @@ is_overlap :: (apos : Vector2, a : *Collider, bpos : Vector2, b : *Collider) -> 
 	if a.is_a & b.collides_with == 0 return false;
 
 	return is_circle_overlap(apos, a.size.x, bpos, b.size.x);
+}
+
+is_in_box :: (pos : Vector2, box : BoxFloat) -> bool {
+	return pos.x > box.x-box.w && pos.x < box.x+box.w
+		&& pos.y > box.y-box.h && pos.y < box.y+box.h;
 }
 
 get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {
@@ -839,6 +854,10 @@ engine_ui_resize :: () {
 engine_ui_deinit :: () {
 }
 
+update_ui_hit :: (r : *Rect) {
+	ui_hit_this_frame |= is_inside(mouse_pos_window.x, mouse_pos_window.y, r);
+}
+
 // Moving this out of the main loop for readability
 debug_rendering :: () {
 	if debug_ui_enabled {
@@ -850,6 +869,7 @@ debug_rendering :: () {
 		    draw_prepared_text(hud_font, text_x, text_y, RED);
 		}
 		draw_text(1, "fps=%", formatFloat(fps, trailing_width=2));
+		draw_text(2, "ui_hit=%", ui_hit_this_frame);
 	}
 
 	if terminal_enabled {

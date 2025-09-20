@@ -24,7 +24,7 @@ game_plugin := EnginePlugin.{
 	proc_render = game_render,
 };
 
-startup_level_name :: "level_01";
+startup_level_name :: "hub";
 
 game_paused := false;
 input_up := false;
@@ -54,10 +54,9 @@ game_begin :: () {
 		if !is_valid(it) continue;
 		world_begin(it);
 	}
-	world_spawn_hero(w);
+	world_enter(w.hero, w);
 
 	assert(active_world != null);
-	assert(active_world.hero != null);
 }
 
 game_end :: () {
@@ -378,12 +377,16 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 	print("World initialize: % [%]\n", w.name, w);
 
 	// warps, linking worlds
-	for w.warps {
-		assert(is_valid(it.level_name));
-		if exists(it.level_name) continue;
+	//for w.warps { //@CLEAN
+	for w.spawners {
+		if it.type != .WorldEntrance continue;
 
-		print("recursive world init: %\n", it.level_name);
-		world_init(it.level_name, depth+1);
+		level_name := it.data;
+		assert(is_valid(level_name));
+		if exists(level_name) continue;
+
+		print("recursive world init: %\n", level_name);
+		world_init(level_name, depth+1);
 	}
 	return w;
 }
@@ -400,28 +403,31 @@ world_deinit :: (using world : *World) {
 
 world_begin :: (world : *World) {
 	assert(is_valid(world));
-	for world.spawners {
-		a := spawn(world, it.type, it.position);
+	for * world.spawners {
+		a := spawn(world, it);
+		//a := spawn(world, it.type, it.position); @CLEAN
 		assert(a != null);
 	}
 
-	if world.hero_spawn_points.count > 0 
-		world.spawn_position = world.hero_spawn_points[world.hero_spawn_index];
+	//@TODO initial hero spawning
+	//if world.hero_spawn_points.count > 0 
+	//	world.spawn_position = world.hero_spawn_points[world.hero_spawn_index];
 
 	// warps, linking worlds
-	for world.warps {
-		assert(is_valid(it.level_name));
-		entrance := spawn(world, .WorldEntrance, it.position);
-		entrance.child_world = get_world(it.level_name);
-		entrance.child_world.parent = entrance.world;
-	}
+	//for world.warps {
+	//	assert(is_valid(it.level_name));
+	//	entrance := spawn(world, .WorldEntrance, it.position);
+	//	entrance.child_world = get_world(it.level_name);
+	//	entrance.child_world.parent = entrance.world;
+	//}
 }
 
+/* @CLEAN
 world_spawn_hero :: (world : *World) {
 	assert(world.hero == null);
 	world.hero = spawn(world, .Hero, world.spawn_position);
 	world_enter(world.hero, world);
-}
+}*/
 
 get_world :: (name : string) -> *World{
 	for * worlds {
@@ -955,18 +961,13 @@ get_box_percent_pos :: (box : *BoxFloat, percent : float) -> Vector2{
 Level :: struct {
 	name : string;
 	spawners : [..] ActorSpawner;
-	hero_spawn_points : [..] Vector2;
-	warps : [..] WarpSpawner;
 }
 
 ActorSpawner :: struct {
 	type : ActorType;
 	position : Vector2;
-}
-
-WarpSpawner :: struct {
-	position : Vector2;
-	level_name : string;
+	scale := Vector2.{1,1};
+	data : string;
 }
 
 level_save :: (level : *Level) {
@@ -983,31 +984,40 @@ level_save :: (level : *Level) {
 		count := cast(*u8)*level.spawners.count;
 		append(*builder, count, size_of(s64));
 		for * level.spawners {
-			data := cast(*u8)it;
-			append(*builder, data, size_of(ActorSpawner));
-		}
-	}
-	{ // hero spawn points
-		count := cast(*u8)*level.hero_spawn_points.count;
-		append(*builder, count, size_of(s64));
-		for * level.hero_spawn_points {
-			data := cast(*u8)it;
-			append(*builder, data, size_of(Vector2));
-		}
-	}
-	{ // warps
-		count := cast(*u8)*level.warps.count;
-		append(*builder, count, size_of(s64));
-		for * level.warps {
-			data := cast(*u8)it;
-			append(*builder, data, size_of(WarpSpawner));
+			spawner := cast(*u8)it;
+			append(*builder, spawner, size_of(ActorSpawner));
 
-			// level name
-			len := cast(*u8)*it.level_name.count;
+			// extra spawner data
+			len := cast(*u8)*it.data.count;
 			append(*builder, len, size_of(s64));
-			append(*builder, it.level_name);
+			append(*builder, it.data);
 		}
 	}
+
+	//@CLEAN
+	//{ // hero spawn points
+	//	count := cast(*u8)*level.hero_spawn_points.count;
+	//	append(*builder, count, size_of(s64));
+	//	for * level.hero_spawn_points {
+	//		data := cast(*u8)it;
+	//		append(*builder, data, size_of(Vector2));
+	//	}
+	//}
+
+	//@CLEAN
+	//{ // warps
+	//	count := cast(*u8)*level.warps.count;
+	//	append(*builder, count, size_of(s64));
+	//	for * level.warps {
+	//		data := cast(*u8)it;
+	//		append(*builder, data, size_of(WarpSpawner));
+//
+	//		// level name
+	//		len := cast(*u8)*it.level_name.count;
+	//		append(*builder, len, size_of(s64));
+	//		append(*builder, it.level_name);
+	//	}
+	//}
 
 	write_entire_file(path, *builder);
 	reset(*builder);
@@ -1031,7 +1041,9 @@ level_load :: (name : string, level : *Level) -> bool {
 	// Level should have been freed before hand
 	assert(level.name.count == 0, "%", level.name);
 	assert(level.spawners.count == 0 && level.spawners.data == null);
-	assert(level.hero_spawn_points.count == 0 && level.hero_spawn_points.data == null);
+
+	//@CLEAN
+	//assert(level.hero_spawn_points.count == 0 && level.hero_spawn_points.data == null);
 
 	// name
 	name_len := 0;
@@ -1047,38 +1059,46 @@ level_load :: (name : string, level : *Level) -> bool {
 		spawner := array_add(*level.spawners);
 		consume_u8_and_length(*buffer, cast(*u8)spawner, size_of(ActorSpawner));
 
-		low, high := enum_range(ActorType);
-		type : s64 = xx spawner.type;
-		assert(type >= low, "%", type);
-		assert(type <= high, "%", type);
+		len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*len, size_of(s64));
+		spawner.data = alloc_string(len);
+		consume_u8_and_length(*buffer, spawner.data.data, len);
+
+		{// Validation
+			low, high := enum_range(ActorType);
+			type : s64 = xx spawner.type;
+			assert(type >= low, "%", type);
+			assert(type <= high, "%", type);
+		}
 	}
 
+	//@CLEAN
 	// hero spawn points
-	points := 0;
-	consume_u8_and_length(*buffer, cast(*u8)*points, size_of(s64));
-	assert(level.hero_spawn_points.count == 0);
-	for 0..points-1 {
-		p := array_add(*level.hero_spawn_points);
-		consume_u8_and_length(*buffer, cast(*u8)p, size_of(Vector2));
-	}
+	//points := 0;
+	//consume_u8_and_length(*buffer, cast(*u8)*points, size_of(s64));
+	//assert(level.hero_spawn_points.count == 0);
+	//for 0..points-1 {
+	//	p := array_add(*level.hero_spawn_points);
+	//	consume_u8_and_length(*buffer, cast(*u8)p, size_of(Vector2));
+	//}
 
-	// warps
-	warp_count := 0;
-	consume_u8_and_length(*buffer, cast(*u8)*warp_count, size_of(s64));
-	assert(level.warps.count == 0);
-	for 0..warp_count-1 {
-		w := array_add(*level.warps);
-		consume_u8_and_length(*buffer, cast(*u8)w, size_of(WarpSpawner));
+	// warps @CLEAN
+	//warp_count := 0;
+	//consume_u8_and_length(*buffer, cast(*u8)*warp_count, size_of(s64));
+	//assert(level.warps.count == 0);
+	//for 0..warp_count-1 {
+	//	w := array_add(*level.warps);
+	//	consume_u8_and_length(*buffer, cast(*u8)w, size_of(WarpSpawner));
+//
+	//	lvl_name_len := 0;
+	//	consume_u8_and_length(*buffer, cast(*u8)*lvl_name_len, size_of(s64));
+	//	w.level_name = alloc_string(lvl_name_len);
+	//	consume_u8_and_length(*buffer, w.level_name.data, lvl_name_len);
+//
+	//	print("\tload warp: % name=% pos=%\n", w, w.level_name, w.position);
+	//}
 
-		lvl_name_len := 0;
-		consume_u8_and_length(*buffer, cast(*u8)*lvl_name_len, size_of(s64));
-		w.level_name = alloc_string(lvl_name_len);
-		consume_u8_and_length(*buffer, w.level_name.data, lvl_name_len);
-
-		print("\tload warp: % name=% pos=%\n", w, w.level_name, w.position);
-	}
-
-	print("LOAD attempt: name=% | spawner_len=% | hero_points=% warps=%\n", level.name, spawner_len, points, level.warps);
+	print("LOAD attempt: name=% | spawners=%\n", level.name, level.spawners);
 	return true;
 }
 
@@ -1087,14 +1107,17 @@ level_reset :: (level : *Level) {
 	assert(level.name.count > 0);
 	string_reset(*level.name);
 
+	for * level.spawners {
+		spawner_reset(it);
+	}
+
 	if level.spawners.data != null
 		array_reset(*level.spawners);
+}
 
-	if level.hero_spawn_points.data != null
-		array_reset(*level.hero_spawn_points);
-
-	if level.warps.data != null
-		array_reset(*level.warps);
+spawner_reset :: (spawner : *ActorSpawner) {
+	assert(spawner != null);
+	string_reset(*spawner.data);
 }
 
 is_valid :: (level : *Level) -> bool {
@@ -1179,14 +1202,13 @@ is_valid :: (actor : *Actor) -> bool{
 	return actor.type != .EMPTY && actor.flags & .Initialized != 0;
 }
 
-
 is_valid_actor_spawner :: (type : ActorType) -> bool {
 	if type== {
 		case .EMPTY; return false;
-		case .Hero; return false;
+		//case .Hero; return false; @CLEAN
 		case .Marker; return false;
-		case .WorldEntrance; return false;
-		case .WorldExit; return false;
+		//case .WorldEntrance; return false; @CLEAN
+		//case .WorldExit; return false;
 	}
 	return true;
 }
@@ -1202,9 +1224,7 @@ init_actor :: (world : *World) -> *Actor{
 		a = *world.actors[world.actors_tail];
 		world.actors_tail += 1;
 
-		if is_valid(a) {
-			continue;
-		}
+		if is_valid(a) continue;
 
 		world.actors[world.actors_tail-1] = Actor.{};
 		a.world = world;
@@ -1225,10 +1245,15 @@ HERO_SPEED_DEFAULT 	:: Vector2.{50,50};
 HERO_SPEED_FAST 	:: Vector2.{200,200};
 
 spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
+	spawner := ActorSpawner.{type, pos, .{1,1}, ""};
+	return spawn(world, *spawner);
+}
+
+spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 	a := init_actor(world);
-	a.type = type;
+	a.type = spawner.type;
 	a.sprite = get_actor_sprite(a.type);
-	a.position = pos;
+	a.position = spawner.position;
 	
 	if a.type == {
 		case .Hero; {
@@ -1242,6 +1267,9 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.interact_collider.is_a = .Pawn;
 			a.interact_collider.collides_with = .Pawn;
 
+			assert(a.world.hero == null);
+			a.world.hero = a;
+			a.world.spawn_position = a.position;
 			a.world.focus = a;
 
 			a.proc_tick_pure = (a : *Actor, dt : float) {
@@ -1306,6 +1334,10 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 			a.body.size = .{SUBCLIP_SIZE_DEFAULT/4.,SUBCLIP_SIZE_DEFAULT/4.};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
+
+			// link this world to a child world
+			a.child_world = get_world(spawner.data);
+			a.child_world.parent = a.world;
 
 			a.proc_render = subworld_render; 
 
