@@ -12,26 +12,21 @@ editor_plugin := EnginePlugin.{
 	proc_render = editor_render,
 };
 
-//@CLEAN
 start_level :: "hub";
 editor_level : Level;
-
+editor_camera : Camera;
+dirty := false;
+level_to_load := "b";
 
 GRID_SIZE :: 32.;
 cursor_size := 1;
 cursor_snap_to_grid := true;
 cursor_box := BoxFloat.{0,0, GRID_SIZE/2., GRID_SIZE/2.};
-//cursor_position : Vector2; @CLEAN
-editor_camera : Camera;
 
-
-// UI v2
+// UI 
 subwindow_info_level 	: Subwindow_Info;
 subwindow_info_tools 	: Subwindow_Info;
 subwindow_info_details 	: Subwindow_Info;
-
-level_to_load := "b";
-dirty := false;
 
 
 EditorTool :: struct {
@@ -104,8 +99,6 @@ editor_deinit :: () {
 editor_begin :: () {
 	print("~~~ Editor Begin ~~~ start_level=% | editor_level=%\n", start_level, editor_level.name);
 
-	//@CLEAN
-	//level_reset(*editor_level);
 	if is_valid_level_name(start_level) {
 		editor_load(start_level);
 	}
@@ -120,30 +113,26 @@ editor_begin :: () {
 editor_end :: () { /*@TODO unused currently*/ }
 
 editor_tick :: (dt : float) {
-
 	// update ui hit tests
 	//@TODO there's probably a better global way to check for UI hits
 	update_ui_hit(*subwindow_info_tools.rect);
 	update_ui_hit(*subwindow_info_level.rect);
 	update_ui_hit(*subwindow_info_details.rect);
 
+	// cursor updates
 	mv := vec_window_to_editor(mouse_pos_window);
-	
 	if cursor_snap_to_grid {
 		gx := cast(s64)(mv.x / GRID_SIZE);
 		gx2 : float = ifx mv.x >= 0 then gx + 0.5 else gx - 0.5;
 		gx2 *= GRID_SIZE;
-		//cursor_position.x = gx2; @CLEAN
 		cursor_box.x = gx2;
 
 		gy := cast(s64)(mv.y / GRID_SIZE);
 		gy2 : float = ifx mv.y >= 0 then gy + 0.5 else gy - 0.5;
 		gy2 *= GRID_SIZE;
-		//cursor_position.y = gy2 * GRID_SIZE; @CLEAN
 		cursor_box.y = gy2;
 	}
 	else {
-		//cursor_position = mv; @CLEAN
 		cursor_box.x = mv.x;
 		cursor_box.y = mv.y;
 	}
@@ -154,7 +143,7 @@ editor_tick :: (dt : float) {
 	if is_input_pressed(65 /*a*/) tool = tool_actor;
 	if is_input_pressed(86 /*v*/) tool = tool_selection;
 
-	// camera panning, @TODO smooth this out
+	// camera panning, @TODO smooth this translation out
 	if is_input_released(.MOUSE_BUTTON_RIGHT) {
 		editor_camera.position = vec_window_to_editor(mouse_pos_window);
 	}
@@ -211,22 +200,10 @@ editor_render :: (dt : float) {
 	draw_circle(origin, 5, color=GREEN);
 
 	//~~~~ UI v2 ~~~~~
-
-    if subwindow_info_level.open {  // The Subwindow starts open, but pressing the Close button can close it.
-        hud_theme.subwindow_theme.resize_controls |= .SNAP;
-        subwindow_state := add_subwindow(*subwindow_info_level, *hud_theme.subwindow_theme);
-        hud_theme.subwindow_theme.resize_controls &= ~.SNAP;
-    }
-    if subwindow_info_tools.open {  // The Subwindow starts open, but pressing the Close button can close it.
-        hud_theme.subwindow_theme.resize_controls |= .SNAP;
-        subwindow_state := add_subwindow(*subwindow_info_tools, *hud_theme.subwindow_theme);
-        hud_theme.subwindow_theme.resize_controls &= ~.SNAP;
-    }
-    if subwindow_info_details.open {  // The Subwindow starts open, but pressing the Close button can close it.
-        hud_theme.subwindow_theme.resize_controls |= .SNAP;
-        subwindow_state := add_subwindow(*subwindow_info_details, *hud_theme.subwindow_theme);
-        hud_theme.subwindow_theme.resize_controls &= ~.SNAP;
-    }
+	win_theme := hud_theme.subwindow_theme;
+    if subwindow_info_level.open  subwindow_state := add_subwindow(*subwindow_info_level, *win_theme);
+    if subwindow_info_tools.open  subwindow_state := add_subwindow(*subwindow_info_tools, *win_theme);
+    if subwindow_info_details.open  subwindow_state := add_subwindow(*subwindow_info_details, *win_theme);
 
     draw_popups();
 }
@@ -284,7 +261,6 @@ draw_subwindow_details :: (state: *Subwindow_State, r: Rect, data: *void) {
 }
 
 editor_save :: () {
-	print("attempting to save...\n");
 	level_save(*editor_level);
 	dirty = false;
 }
@@ -295,12 +271,7 @@ editor_load :: (name : string) {
 		return;
 	}
 
-	//@TODO do we bake is_valid into the level_reset?
-	if is_valid(*editor_level)
-	{
-		print("\treseting %\n", name);
-		level_reset(*editor_level);
-	}
+	if is_valid(*editor_level) level_reset(*editor_level);
 
 	success := level_load(name, *editor_level);
 
@@ -336,11 +307,6 @@ editor_new_level :: (name : string) {
 	print("Editting new level: %\n", editor_level.name);
 }
 
-//@CLEAN
-//is_cursor_deadzone :: (pos : Vector2) -> bool {
-//	return pos.x < deadzone.x;
-//}
-
 vec_editor_to_window :: (v : Vector2) -> Vector2 {
 	result := v - editor_camera.position;
 	scale := get_window_aspect_scale() * editor_camera.zoom;
@@ -356,7 +322,6 @@ vec_window_to_editor :: (v : Vector2) -> Vector2 {
 	result.x -= window_width/2.;
 	result.y -= window_height/2.;
 	scale := get_window_aspect_scale() * editor_camera.zoom;
-	//scale /= editor_camera.zoom;
 	result.x /= scale;
 	result.y /= scale;
 	result = result + editor_camera.position;

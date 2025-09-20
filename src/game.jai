@@ -377,7 +377,6 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 	print("World initialize: % [%]\n", w.name, w);
 
 	// warps, linking worlds
-	//for w.warps { //@CLEAN
 	for w.spawners {
 		if it.type != .WorldEntrance continue;
 
@@ -405,29 +404,9 @@ world_begin :: (world : *World) {
 	assert(is_valid(world));
 	for * world.spawners {
 		a := spawn(world, it);
-		//a := spawn(world, it.type, it.position); @CLEAN
 		assert(a != null);
 	}
-
-	//@TODO initial hero spawning
-	//if world.hero_spawn_points.count > 0 
-	//	world.spawn_position = world.hero_spawn_points[world.hero_spawn_index];
-
-	// warps, linking worlds
-	//for world.warps {
-	//	assert(is_valid(it.level_name));
-	//	entrance := spawn(world, .WorldEntrance, it.position);
-	//	entrance.child_world = get_world(it.level_name);
-	//	entrance.child_world.parent = entrance.world;
-	//}
 }
-
-/* @CLEAN
-world_spawn_hero :: (world : *World) {
-	assert(world.hero == null);
-	world.hero = spawn(world, .Hero, world.spawn_position);
-	world_enter(world.hero, world);
-}*/
 
 get_world :: (name : string) -> *World{
 	for * worlds {
@@ -693,10 +672,6 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 		camera.position.y = 0;
 	}
 	
-	
-	//@TODO not sure how to handle nested ticks for physics outside of active_world
-	//physics_step(world, dt);
-
 	// actor ticks
     for i : actors_head..actors_tail {
 		a := *actors[i];
@@ -994,31 +969,6 @@ level_save :: (level : *Level) {
 		}
 	}
 
-	//@CLEAN
-	//{ // hero spawn points
-	//	count := cast(*u8)*level.hero_spawn_points.count;
-	//	append(*builder, count, size_of(s64));
-	//	for * level.hero_spawn_points {
-	//		data := cast(*u8)it;
-	//		append(*builder, data, size_of(Vector2));
-	//	}
-	//}
-
-	//@CLEAN
-	//{ // warps
-	//	count := cast(*u8)*level.warps.count;
-	//	append(*builder, count, size_of(s64));
-	//	for * level.warps {
-	//		data := cast(*u8)it;
-	//		append(*builder, data, size_of(WarpSpawner));
-//
-	//		// level name
-	//		len := cast(*u8)*it.level_name.count;
-	//		append(*builder, len, size_of(s64));
-	//		append(*builder, it.level_name);
-	//	}
-	//}
-
 	write_entire_file(path, *builder);
 	reset(*builder);
 	print("Saved %\n", path);
@@ -1071,32 +1021,6 @@ level_load :: (name : string, level : *Level) -> bool {
 			assert(type <= high, "%", type);
 		}
 	}
-
-	//@CLEAN
-	// hero spawn points
-	//points := 0;
-	//consume_u8_and_length(*buffer, cast(*u8)*points, size_of(s64));
-	//assert(level.hero_spawn_points.count == 0);
-	//for 0..points-1 {
-	//	p := array_add(*level.hero_spawn_points);
-	//	consume_u8_and_length(*buffer, cast(*u8)p, size_of(Vector2));
-	//}
-
-	// warps @CLEAN
-	//warp_count := 0;
-	//consume_u8_and_length(*buffer, cast(*u8)*warp_count, size_of(s64));
-	//assert(level.warps.count == 0);
-	//for 0..warp_count-1 {
-	//	w := array_add(*level.warps);
-	//	consume_u8_and_length(*buffer, cast(*u8)w, size_of(WarpSpawner));
-//
-	//	lvl_name_len := 0;
-	//	consume_u8_and_length(*buffer, cast(*u8)*lvl_name_len, size_of(s64));
-	//	w.level_name = alloc_string(lvl_name_len);
-	//	consume_u8_and_length(*buffer, w.level_name.data, lvl_name_len);
-//
-	//	print("\tload warp: % name=% pos=%\n", w, w.level_name, w.position);
-	//}
 
 	print("LOAD attempt: name=% | spawners=%\n", level.name, level.spawners);
 	return true;
@@ -1181,6 +1105,8 @@ ActorType :: enum s64 #specified {
 	WorldEntrance :: 4;
 	WorldExit 	:: 5; // warps to the parent world
 	Key 		:: 6;
+
+	Block 		:: 1000;
 }
 
 ActorFlags :: enum_flags s64 {
@@ -1397,6 +1323,7 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 		case .WorldEntrance; 	return TextureID.Entrance;
 		case .WorldExit; 		return TextureID.Exit;
 		case .Key; 				return TextureID.ManaGem;
+		case .Block; 			return TextureID.Tile_01;
 	}
 	assert(false, "%", type);
 	return .COUNT;

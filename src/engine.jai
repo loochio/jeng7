@@ -231,12 +231,6 @@ set_plugin :: (plugin : string) {
 		}
 	}
 
-	//@CLEAN disabled reloading
-	//if active_plugin == prev {
-	//	print("Failed to switch to plugin [%]\n", plugin);
-	//	return;
-	//}
-
 	if prev != null {
 		print("Plugin exiting from [%]\n", prev);
 		prev.proc_deinit();
@@ -438,7 +432,6 @@ is_valid :: (str : string) -> bool{
 	return str.count > 0;
 }
 
-//@CLEAN we don't use this?
 linear_move :: (position : *Vector2, velocity : *Vector2, dt : float) {
     position.x += velocity.x * dt;
     position.y += velocity.y * dt;
