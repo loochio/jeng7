@@ -54,9 +54,11 @@ game_begin :: () {
 		if !is_valid(it) continue;
 		world_begin(it);
 	}
-	w.focus = w.hero; //@TODO kinda sloppy due to spawn order
-	world_enter(w.hero, w);
 
+	//@TODO sloppy, this is happening in move_actor_to_world
+	w.focus = w.hero; //@TODO kinda sloppy due to spawn order
+	
+	world_enter(w.hero, w);
 	assert(active_world != null);
 }
 
@@ -334,8 +336,8 @@ World :: struct {
 	actors_head := 0;
 	actors_tail := 0;
 
-	hero_spawn_index := 0; //@TODO old
-	spawn_position : Vector2;
+	//hero_spawn_index := 0; //@CLEAN old
+	//spawn_position : Vector2; //@CLEAN old
 	hero : *Actor; //@TODO remove, looks like we only use this for Markers
 	
 	camera : Camera;
@@ -1191,6 +1193,7 @@ deinit_actor :: (a : *Actor) {
 // hero configs
 HERO_SPEED_DEFAULT 	:: Vector2.{50,50};
 HERO_SPEED_FAST 	:: Vector2.{200,200};
+hero_throw_strength := 375.;
 
 spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 	spawner := ActorSpawner.{type, pos, .{1,1}, ""};
@@ -1217,7 +1220,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			assert(a.world.hero == null);
 			a.world.hero = a;
-			a.world.spawn_position = a.position;
+			//a.world.spawn_position = a.position; @CLEAN
 			a.world.focus = a;
 
 			a.proc_tick_pure = (a : *Actor, dt : float) {
@@ -1385,8 +1388,6 @@ item_pickup :: (item : *Actor, owner : *Actor) {
 		sfx.rate_scale = random_get_within_range(0.7, 0.8); 
 	}
 }
-
-hero_throw_strength := 375.;
 
 item_drop :: (owner : *Actor) {
 	assert(owner != null);

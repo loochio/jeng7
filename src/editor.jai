@@ -30,22 +30,13 @@ subwindow_info_tools 	: Subwindow_Info;
 subwindow_info_details 	: Subwindow_Info;
 
 
-EditorTool :: struct {
-	name : string;
-	proc_tick : EditorToolProc_Tick;
-	proc_render : EditorToolProc_Render;
-	proc_render_in_subwindow : EditorToolProc_RenderSubWindow;
-}
-
-EditorToolProc_Tick :: #type (dt : float);
-EditorToolProc_Render :: #type (dt : float);
-EditorToolProc_RenderSubWindow :: #type (state: *Subwindow_State, r: Rect, data: *void);
-
-tool : EditorTool = tool_actor;
-
-
 editor_init :: () {
 	print("~~~ Editor init ~~~\n");
+
+	register_tool(*tool_selection);
+	register_tool(*tool_actor);
+	register_tool(*tool_move);
+	tool = tool_selection; //default
 
 	register_cmd("save", (args: .. Any) { editor_save(); });
 	register_cmd("load", (args: .. Any) { 
@@ -95,6 +86,11 @@ editor_init :: () {
 editor_deinit :: () {
 	print("~~~ Editor Deinit ~~~ Level=%\n", editor_level.name);
 	level_reset(*editor_level);
+
+	for tool_options {
+		string_reset(*it);
+	}
+	array_reset(*tool_options);
 }
 
 editor_begin :: () {
@@ -139,12 +135,16 @@ editor_tick :: (dt : float) {
 		cursor_box.y = mv.y;
 	}
 
-	if tool.proc_tick tool.proc_tick(dt);
+	// tool keybind/init mapping
+	for t : tools {
+		if is_input_pressed(t.key){
+			tool = t;
 
-	//@TODO softcode, define keybind in tool struct
-	if is_input_pressed(65 /*a*/) tool = tool_actor;
-	if is_input_pressed(86 /*v*/) tool = tool_selection;
-	if is_input_pressed(77 /*m*/) tool = tool_move;
+			if t.proc_init t.proc_init(t);
+		}
+	}
+
+	if tool.proc_tick tool.proc_tick(*tool, dt);
 
 	// camera panning, @TODO smooth this translation out
 	if is_input_released(.MOUSE_BUTTON_RIGHT) {
@@ -197,7 +197,7 @@ editor_render :: (dt : float) {
 	//@CLEAN debug orgin
 	draw_circle(origin, 5, color=GREEN);
 
-	if tool.proc_render tool.proc_render(dt);
+	if tool.proc_render tool.proc_render(*tool, dt);
 
 	//~~~~ UI v2 ~~~~~
 	win_theme := hud_theme.subwindow_theme;
@@ -328,62 +328,118 @@ vec_window_to_editor :: (v : Vector2) -> Vector2 {
 	return result;
 }
 
+// ~~~~~~ TOOLS ~~~~~~
+
+
 draw_subwindow_tools :: (state: *Subwindow_State, r: Rect, data: *void) {
 	// active tool info
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	r0 := Rect.{r.x, r.y+r.h-lh, r.w, lh};
-	name := tprint("Active Tool: %", tool.name);
-    label(r0, name, *hud_theme.label_theme);
+    {
+ 	   changed, state := dropdown(r0, tool_options, *tool_index, *hud_theme.dropdown_theme);
+ 	   tool = tools[tool_index];
+    }
 
+    // tool sub-section
     r1 := Rect.{r.x,r.y, r.w, r.h-r0.h};
-	if tool.proc_render_in_subwindow tool.proc_render_in_subwindow(state, r1, data);
+	if tool.proc_render_in_subwindow tool.proc_render_in_subwindow(*tool, state, r1, data);
 }
 
-// ~~~ TOOL Defs ~~~
+EditorTool :: struct {
+	name : string;
+	key : Key_Code;
+
+	proc_init : EditorToolProc;
+	proc_tick : EditorToolProc_Tick;
+	proc_render : EditorToolProc_Render;
+	proc_render_in_subwindow : EditorToolProc_RenderSubWindow;
+}
+
+EditorToolProc :: #type (t : *EditorTool);
+EditorToolProc_Tick :: #type (t : *EditorTool, dt : float);
+EditorToolProc_Render :: #type (t : *EditorTool, dt : float);
+EditorToolProc_RenderSubWindow :: #type (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void);
+
+tool : EditorTool; //@CLEAN = tool_actor;
+tools : [..] *EditorTool;
+tool_options : [..] string;
+tool_index : s32;
+
+register_tool :: (tool : *EditorTool) {
+	assert(tool != null);
+	array_add(*tools, tool);
+
+	tool_text := sprint("%", tool.name);
+	array_add(*tool_options, tool_text);
+}
 
 // ~~~~ Actor Spawner Tool ~~~~
 
-tool_actor :: EditorTool.{
+EditorTool_Actor :: struct {
+	#as using tool : EditorTool;
+
+	actor_type : ActorType;
+	actor_data : string;
+	prev_placement : Vector2;
+}
+
+tool_actor :: EditorTool_Actor.{
 	name = "Actors",
+	key = 65, /*a*/
 	proc_tick = tool_tick_actor,
 	proc_render = tool_render_actor,
 	proc_render_in_subwindow = tool_render_in_subwindow_actor,
 };
 
-tool_actor_selection : ActorType;
-tool_actor_data : string;
-tool_actor_prev_placement : Vector2;
+/* @CLEAN
+tool_actor :: EditorTool.{
+	name = "Actors",
+	key = 65,
+	proc_tick = tool_tick_actor,
+	proc_render = tool_render_actor,
+	proc_render_in_subwindow = tool_render_in_subwindow_actor,
+};
+*/
+
+//@CLEAN
+//tool_actor_type : ActorType; //@CLEAN
+//tool_actor_data : string;	//@CLEAN
+//tool_actor_prev_placement : Vector2;
 
 
-tool_tick_actor :: (dt : float) {
+tool_tick_actor :: (t : *EditorTool, dt : float) {
 	if ui_hit_this_frame return;
+
+	atool := cast(*EditorTool_Actor) t;
 
 	if is_input_pressed(.MOUSE_BUTTON_LEFT) { 
 		cp := Vector2.{cursor_box.x, cursor_box.y};
-		if tool_actor_prev_placement != cp{
+		if atool.prev_placement != cp {
 			spawner := ActorSpawner.{
-				tool_actor_selection, 
+				atool.actor_type,
+				//tool_actor_type,  @CLEAN
 				cp,
 				Vector2.{1,1},
-				tool_actor_data,
+				atool.actor_data,
 			};
 			array_add(*editor_level.spawners, spawner);
-
-			tool_actor_prev_placement = cp;
+			atool.prev_placement = cp;
 			dirty = true;
 		}
 	}
 }
 
-tool_render_actor :: (dt : float) {}
+tool_render_actor :: (t : *EditorTool, dt : float) {}
 
-tool_render_in_subwindow_actor :: (state: *Subwindow_State, r: Rect, data: *void) {
+tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
+	atool := cast(*EditorTool_Actor) t;
+
 	// actor type label
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	rlabel := Rect.{r.x, r.y+r.h-lh, r.w, lh};
-	actor := tprint("Actor Type: %", tool_actor_selection);
+	actor := tprint("Actor Type: %", atool.actor_type);
 	theme : = hud_theme.label_theme;
 	theme.alignment = .Left;
     label(rlabel, actor, *theme);
@@ -412,7 +468,7 @@ tool_render_in_subwindow_actor :: (state: *Subwindow_State, r: Rect, data: *void
     	row := (index / COLUMNS) * AB;
     	rbtn.y = root.y - row - rbtn.h;
     	if button(rbtn, "", *hud_theme.button_theme, texture=tex, identifier=it) {
-    		tool_actor_selection = type;
+    		atool.actor_type = type;
 	    }
 	    index +=1;
     }
@@ -431,7 +487,7 @@ tool_render_in_subwindow_actor :: (state: *Subwindow_State, r: Rect, data: *void
     	r3.x += r2.w;
     	text_theme := hud_theme.text_input_theme;
     	action, text, state := text_input(r3, "", *text_theme);
-		tool_actor_data = sprint(state.text);
+		atool.actor_data = sprint(state.text);
     }
 }
 
@@ -440,6 +496,7 @@ tool_render_in_subwindow_actor :: (state: *Subwindow_State, r: Rect, data: *void
 
 tool_selection :: EditorTool.{
 	name = "Selection",
+	key = 86 /*v*/,
 	proc_tick = tool_tick_selection,
 	proc_render = tool_render_selection,
 	proc_render_in_subwindow = tool_render_in_subwindow_selection,
@@ -468,14 +525,17 @@ clear_selection :: () {
 	selection_box = BoxFloat.{};
 }
 
-tool_tick_selection :: (dt : float) {
+tool_tick_selection :: (t : *EditorTool, dt : float) {
 	// begin selection
 	if is_input_pressed(.MOUSE_BUTTON_LEFT) {
-		clear_selection();
+		if !input_mod_shift && !input_mod_ctrl{
+			clear_selection();
+		}
 		selection_box = cursor_box;
 		selection_start = Vector2.{cursor_box.x, cursor_box.y};
 		selection_end = selection_start;
 	}
+	// update selection box
 	else if is_input_down(.MOUSE_BUTTON_LEFT) {
 		selection_end = Vector2.{cursor_box.x, cursor_box.y};
 		selection_box.x = selection_start.x + (selection_end.x-selection_start.x)/2.;
@@ -488,7 +548,12 @@ tool_tick_selection :: (dt : float) {
 	if is_input_released(.MOUSE_BUTTON_LEFT) {
 		for editor_level.spawners {
 			if is_in_box(it.position, selection_box) {
-				array_add(*selected_spawner_idxs, it_index);
+				if input_mod_ctrl { // delete
+					array_unordered_remove_by_value(*selected_spawner_idxs, it_index);
+				}
+				else { // add
+					array_add(*selected_spawner_idxs, it_index);
+				}
 			}
 		}
 		selection_box = BoxFloat.{};
@@ -505,7 +570,7 @@ tool_tick_selection :: (dt : float) {
 	}
 }
 
-tool_render_selection :: (dt : float) {
+tool_render_selection :: (t : *EditorTool, dt : float) {
 	 // selection box 
 	sp := vec_editor_to_window(Vector2.{selection_box.x, selection_box.y});
 	w := scalar_to_window(selection_box.w) * editor_camera.zoom;
@@ -522,7 +587,7 @@ tool_render_selection :: (dt : float) {
 	}
 }
 
-tool_render_in_subwindow_selection :: (state: *Subwindow_State, r: Rect, data: *void) {
+tool_render_in_subwindow_selection :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	theme : = hud_theme.label_theme;
@@ -554,10 +619,11 @@ tool_render_in_subwindow_selection :: (state: *Subwindow_State, r: Rect, data: *
 
 tool_move :: EditorTool.{
 	name = "Move",
+	key = 77, /*m*/
 	proc_tick = tool_tick_move,
 };
 
-tool_tick_move :: (dt : float) {
+tool_tick_move :: (t : *EditorTool, dt : float) {
 	if is_input_pressed(.ARROW_UP) {
 		print("up\n");
 	}
