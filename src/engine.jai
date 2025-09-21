@@ -395,8 +395,8 @@ is_overlap :: (apos : Vector2, a : *Collider, bpos : Vector2, b : *Collider) -> 
 }
 
 is_in_box :: (pos : Vector2, box : BoxFloat) -> bool {
-	return pos.x > box.x-box.w && pos.x < box.x+box.w
-		&& pos.y > box.y-box.h && pos.y < box.y+box.h;
+	return pos.x > box.x-box.w/2. && pos.x < box.x+box.w/2.
+		&& pos.y > box.y-box.h/2. && pos.y < box.y+box.h/2.;
 }
 
 get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {

@@ -54,6 +54,7 @@ game_begin :: () {
 		if !is_valid(it) continue;
 		world_begin(it);
 	}
+	w.focus = w.hero; //@TODO kinda sloppy due to spawn order
 	world_enter(w.hero, w);
 
 	assert(active_world != null);
@@ -333,7 +334,7 @@ World :: struct {
 	actors_head := 0;
 	actors_tail := 0;
 
-	hero_spawn_index := 0;
+	hero_spawn_index := 0; //@TODO old
 	spawn_position : Vector2;
 	hero : *Actor; //@TODO remove, looks like we only use this for Markers
 	
@@ -992,9 +993,6 @@ level_load :: (name : string, level : *Level) -> bool {
 	assert(level.name.count == 0, "%", level.name);
 	assert(level.spawners.count == 0 && level.spawners.data == null);
 
-	//@CLEAN
-	//assert(level.hero_spawn_points.count == 0 && level.hero_spawn_points.data == null);
-
 	// name
 	name_len := 0;
 	consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
@@ -1006,13 +1004,21 @@ level_load :: (name : string, level : *Level) -> bool {
 	consume_u8_and_length(*buffer, cast(*u8)*spawner_len, size_of(s64));
 	assert(level.spawners.count == 0);
 	for 0..spawner_len-1 {
-		spawner := array_add(*level.spawners);
-		consume_u8_and_length(*buffer, cast(*u8)spawner, size_of(ActorSpawner));
+		spawner := ActorSpawner.{};
+		consume_u8_and_length(*buffer, cast(*u8)*spawner, size_of(ActorSpawner));
 
 		len := 0;
 		consume_u8_and_length(*buffer, cast(*u8)*len, size_of(s64));
 		spawner.data = alloc_string(len);
 		consume_u8_and_length(*buffer, spawner.data.data, len);
+
+		//@TODO need to figure out this enum validation
+		if type_of(spawner.type) == ActorType {
+			array_add(*level.spawners, spawner);
+		}
+		else{
+			print("\tFailed to parse spawner: % in level=%\n", spawner.type, level.name);
+		}
 
 		{// Validation
 			low, high := enum_range(ActorType);
@@ -1022,7 +1028,7 @@ level_load :: (name : string, level : *Level) -> bool {
 		}
 	}
 
-	print("LOAD attempt: name=% | spawners=%\n", level.name, level.spawners);
+	print("LOAD attempt: name=% | spawners=%\n", level.name, level.spawners.count);
 	return true;
 }
 
@@ -1100,13 +1106,13 @@ ActorType :: enum s64 #specified {
 
 	Hero		:: 0;
 	Marker		:: 1;
-	Tile 		:: 2;
+	Block 		:: 2; //@CLEAN
 	Tile_Red 	:: 3;
 	WorldEntrance :: 4;
 	WorldExit 	:: 5; // warps to the parent world
 	Key 		:: 6;
 
-	Block 		:: 1000;
+	//Block 		:: 1000; @CLEAN
 }
 
 ActorFlags :: enum_flags s64 {
@@ -1116,6 +1122,25 @@ ActorFlags :: enum_flags s64 {
 	CanPickup		:: 1<<19;
 	Pickupable		:: 1<<20;
 	BlockWarping	:: 1<<21; // VERY IMPORTANT for exits or else the game logically doesn't make sense
+}
+
+get_actor_tid :: (type : ActorType) -> TextureID {
+	if type== {
+		case .Hero; 			return TextureID.Hero;
+		case .Block;			return TextureID.Tile_01; //@CLEAN
+		case .Tile_Red;			return TextureID.Tile_Magma;
+		case .Marker; 			return TextureID.Marker;
+		case .WorldEntrance; 	return TextureID.Entrance;
+		case .WorldExit; 		return TextureID.Exit;
+		case .Key; 				return TextureID.ManaGem;
+	}
+	assert(false, "%", type);
+	return .COUNT;
+}
+
+get_actor_sprite :: (type : ActorType) -> *Sprite {
+	tid := get_actor_tid(type);
+	return get_sprite(tid);
 }
 
 
@@ -1131,10 +1156,7 @@ is_valid :: (actor : *Actor) -> bool{
 is_valid_actor_spawner :: (type : ActorType) -> bool {
 	if type== {
 		case .EMPTY; return false;
-		//case .Hero; return false; @CLEAN
 		case .Marker; return false;
-		//case .WorldEntrance; return false; @CLEAN
-		//case .WorldExit; return false;
 	}
 	return true;
 }
@@ -1278,7 +1300,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .WorldExit; {
 			a.flags |= .Pickupable | .BlockWarping;
 			a.body.type = .Kinematic;
-			a.body.size = .{8,8};
+			a.body.size = .{16,16};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 			a.world.focus = a;
@@ -1290,6 +1312,13 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 					case; 		world_exit(interactor);
 				}
 			}
+		}
+
+		case .Block; {
+			a.body.type = .Static;
+			a.body.size = .{16,16};
+			a.body.is_a = .Wall;
+			a.body.collides_with = .Pawn | .Wall;
 		}
 
 		case .Key; {
@@ -1311,27 +1340,6 @@ destroy :: (a : *Actor) {
 	collider_reset(*a.body);
 	collider_reset(*a.interact_collider);
 	array_reset_keeping_memory(*a.children);
-}
-
-
-get_actor_tid :: (type : ActorType) -> TextureID {
-	if type== {
-		case .Hero; 			return TextureID.Hero;
-		case .Tile;				return TextureID.Tile_01;
-		case .Tile_Red;			return TextureID.Tile_Magma;
-		case .Marker; 			return TextureID.Marker;
-		case .WorldEntrance; 	return TextureID.Entrance;
-		case .WorldExit; 		return TextureID.Exit;
-		case .Key; 				return TextureID.ManaGem;
-		case .Block; 			return TextureID.Tile_01;
-	}
-	assert(false, "%", type);
-	return .COUNT;
-}
-
-get_actor_sprite :: (type : ActorType) -> *Sprite {
-	tid := get_actor_tid(type);
-	return get_sprite(tid);
 }
 
 attach :: (parent : *Actor, child : *Actor, offset := Vector2.{0,0}, keep_body_enabled := false) {
@@ -1465,7 +1473,7 @@ register_cheats :: () {
 	});
 
 	//@TODO hid this behind a DEBUG build define
-	//register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
+	register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
 }
 
 #load "engine.jai";

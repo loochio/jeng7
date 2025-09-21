@@ -19,6 +19,7 @@ dirty := false;
 level_to_load := "b";
 
 GRID_SIZE :: 32.;
+grid_cell_size := GRID_SIZE;
 cursor_size := 1;
 cursor_snap_to_grid := true;
 cursor_box := BoxFloat.{0,0, GRID_SIZE/2., GRID_SIZE/2.};
@@ -121,6 +122,7 @@ editor_tick :: (dt : float) {
 
 	// cursor updates
 	mv := vec_window_to_editor(mouse_pos_window);
+
 	if cursor_snap_to_grid {
 		gx := cast(s64)(mv.x / GRID_SIZE);
 		gx2 : float = ifx mv.x >= 0 then gx + 0.5 else gx - 0.5;
@@ -137,11 +139,12 @@ editor_tick :: (dt : float) {
 		cursor_box.y = mv.y;
 	}
 
-	tool.proc_tick(dt);
+	if tool.proc_tick tool.proc_tick(dt);
 
 	//@TODO softcode, define keybind in tool struct
 	if is_input_pressed(65 /*a*/) tool = tool_actor;
 	if is_input_pressed(86 /*v*/) tool = tool_selection;
+	if is_input_pressed(77 /*m*/) tool = tool_move;
 
 	// camera panning, @TODO smooth this translation out
 	if is_input_released(.MOUSE_BUTTON_RIGHT) {
@@ -166,15 +169,16 @@ editor_tick :: (dt : float) {
 editor_render :: (dt : float) {
 	origin := vec_editor_to_window(.{0,0});
 	scale := Vector2.{editor_camera.zoom, editor_camera.zoom};
-	line := scalar_to_window(8) * scale.x;
+	grid_cell_size = scalar_to_window(GRID_SIZE) * editor_camera.zoom;
+	line := scalar_to_window(8) * editor_camera.zoom;
 
 	//grid
 	//@TODO draw these as lines
-	size := scalar_to_window(GRID_SIZE) * scale.x;
 	g :: 20;
+	s := grid_cell_size;
 	for i: -g*2..g*2 {
 		for j: -g..g {
-			draw_box(.{origin.x+ size*i+size/2, origin.y + size*j+size/2, size, size}, G_BLACK);
+			draw_box(.{origin.x+ s*i+s/2, origin.y + s*j+s/2, s, s}, G_BLACK);
 		}
 	}
 
@@ -185,19 +189,15 @@ editor_render :: (dt : float) {
 		render_sprite(sprite, pos, scale);
 	}
 
-	// active selection
-	if has_selection() {
-		spawner := get_selection();
-		sp := vec_editor_to_window(spawner.position);
-		draw_box(.{sp.x, sp.y, size, size}, MAGENTA, line*0.5);
+	{ //cursor
+		cp := vec_editor_to_window(Vector2.{cursor_box.x, cursor_box.y});
+		draw_box(.{cp.x, cp.y, grid_cell_size, grid_cell_size}, YELLOW, line);
 	}
 	
-	//cursor
-	cp := vec_editor_to_window(Vector2.{cursor_box.x, cursor_box.y});
-	draw_box(.{cp.x, cp.y, size, size}, YELLOW, line);
-
 	//@CLEAN debug orgin
 	draw_circle(origin, 5, color=GREEN);
+
+	if tool.proc_render tool.proc_render(dt);
 
 	//~~~~ UI v2 ~~~~~
 	win_theme := hud_theme.subwindow_theme;
@@ -337,10 +337,12 @@ draw_subwindow_tools :: (state: *Subwindow_State, r: Rect, data: *void) {
     label(r0, name, *hud_theme.label_theme);
 
     r1 := Rect.{r.x,r.y, r.w, r.h-r0.h};
-	tool.proc_render_in_subwindow(state, r1, data);
+	if tool.proc_render_in_subwindow tool.proc_render_in_subwindow(state, r1, data);
 }
 
 // ~~~ TOOL Defs ~~~
+
+// ~~~~ Actor Spawner Tool ~~~~
 
 tool_actor :: EditorTool.{
 	name = "Actors",
@@ -353,19 +355,6 @@ tool_actor_selection : ActorType;
 tool_actor_data : string;
 tool_actor_prev_placement : Vector2;
 
-selected_spawner_idx := -1;
-
-get_selection :: () -> *ActorSpawner {
-	if selected_spawner_idx < 0 || editor_level.spawners.count == 0 {
-		return null;
-	}
-    assert(selected_spawner_idx < editor_level.spawners.count);
-	return *editor_level.spawners[selected_spawner_idx];
-}
-
-has_selection :: () -> bool {
-	return selected_spawner_idx >= 0 && selected_spawner_idx < editor_level.spawners.count;
-}
 
 tool_tick_actor :: (dt : float) {
 	if ui_hit_this_frame return;
@@ -447,6 +436,8 @@ tool_render_in_subwindow_actor :: (state: *Subwindow_State, r: Rect, data: *void
 }
 
 
+// ~~~~ Selection Tool ~~~~
+
 tool_selection :: EditorTool.{
 	name = "Selection",
 	proc_tick = tool_tick_selection,
@@ -454,28 +445,82 @@ tool_selection :: EditorTool.{
 	proc_render_in_subwindow = tool_render_in_subwindow_selection,
 };
 
+//selected_spawner_idx := -1; @CLEAN
+selected_spawner_idxs : [..] s64;
+selection_box : BoxFloat;
+selection_start : Vector2;
+selection_end : Vector2;
+
+get_selection :: (index := 0) -> *ActorSpawner {
+	if selected_spawner_idxs.count == 0 return null;
+	if index < 0 || index >= selected_spawner_idxs.count return null;
+
+	spawner_idx := selected_spawner_idxs[index];
+	return *editor_level.spawners[spawner_idx];
+}
+
+has_selection :: () -> bool {
+	return selected_spawner_idxs.count > 0;
+}
+
+clear_selection :: () {
+	array_reset(*selected_spawner_idxs);
+	selection_box = BoxFloat.{};
+}
+
 tool_tick_selection :: (dt : float) {
+	// begin selection
 	if is_input_pressed(.MOUSE_BUTTON_LEFT) {
+		clear_selection();
+		selection_box = cursor_box;
+		selection_start = Vector2.{cursor_box.x, cursor_box.y};
+		selection_end = selection_start;
+	}
+	else if is_input_down(.MOUSE_BUTTON_LEFT) {
+		selection_end = Vector2.{cursor_box.x, cursor_box.y};
+		selection_box.x = selection_start.x + (selection_end.x-selection_start.x)/2.;
+		selection_box.y = selection_start.y + (selection_end.y-selection_start.y)/2.;
+		selection_box.w = abs((selection_end.x-selection_start.x)) + GRID_SIZE;
+		selection_box.h = abs((selection_end.y-selection_start.y)) + GRID_SIZE;
+	}
+
+	// complete selection
+	if is_input_released(.MOUSE_BUTTON_LEFT) {
 		for editor_level.spawners {
-			if is_in_box(it.position, cursor_box) {
-				selected_spawner_idx = it_index;
-				break;
+			if is_in_box(it.position, selection_box) {
+				array_add(*selected_spawner_idxs, it_index);
 			}
 		}
+		selection_box = BoxFloat.{};
 	}
 
 	if is_input_pressed(.DELETE) {
 		if has_selection() {
-			spawner := get_selection();
-			print("delete selection: % %\n", spawner.type, spawner.position);
-			array_unordered_remove_by_index(*editor_level.spawners, selected_spawner_idx);
-			selected_spawner_idx = -1;
+			for selected_spawner_idxs {
+				array_unordered_remove_by_index(*editor_level.spawners, it);
+			}
+			clear_selection();
 			dirty = true;
 		}
 	}
 }
 
-tool_render_selection :: (dt : float) {}
+tool_render_selection :: (dt : float) {
+	 // selection box 
+	sp := vec_editor_to_window(Vector2.{selection_box.x, selection_box.y});
+	w := scalar_to_window(selection_box.w) * editor_camera.zoom;
+	h := scalar_to_window(selection_box.h) * editor_camera.zoom;
+	line := scalar_to_window(4) * editor_camera.zoom;
+	draw_box(.{sp.x, sp.y, w, h}, CYAN, line);
+
+	// active selection
+	for selected_spawner_idxs {
+		spawner := editor_level.spawners[it];
+		//spawner := get_selection(); @CLEAN
+		sp := vec_editor_to_window(spawner.position);
+		draw_box(.{sp.x, sp.y, grid_cell_size, grid_cell_size}, MAGENTA, line*0.5);
+	}
+}
 
 tool_render_in_subwindow_selection :: (state: *Subwindow_State, r: Rect, data: *void) {
 	p := 4.;
@@ -485,15 +530,44 @@ tool_render_in_subwindow_selection :: (state: *Subwindow_State, r: Rect, data: *
 	{
 		r0 := Rect.{r.x, r.y+r.h-lh, r.w, lh};
 		text := tprint("Cursor: %", Vector2.{cursor_box.x, cursor_box.y});
-		
+	    label(r0, text, *theme);
+
+	    r0.y -= lh;
+		text = tprint("Selection: %", selection_box);
 	    label(r0, text, *theme);
 	}
 	
 	if has_selection() {
-		spawner := get_selection();
-		r0 := Rect.{r.x, r.y+r.h-lh*2, r.w, lh};
-		text := tprint("Selection: % [%]", spawner.type, spawner.position);
-    	label(r0, text, *theme);
+		for selected_spawner_idxs {
+			spawner := editor_level.spawners[it];
+			//spawner := get_selection(); @CLEAN
+			line := 3+it_index;
+			r0 := Rect.{r.x, r.y+r.h-lh*line, r.w, lh};
+			text := tprint("Selection: % [%]", spawner.type, spawner.position);
+	    	label(r0, text, *theme);
+		}
 	}
 }
 
+
+//~~~ Move Tool ~~~
+
+tool_move :: EditorTool.{
+	name = "Move",
+	proc_tick = tool_tick_move,
+};
+
+tool_tick_move :: (dt : float) {
+	if is_input_pressed(.ARROW_UP) {
+		print("up\n");
+	}
+	if is_input_pressed(.ARROW_DOWN) {
+		print("down\n");
+	}
+	if is_input_pressed(.ARROW_RIGHT) {
+		print("right\n");
+	}
+	if is_input_pressed(.ARROW_LEFT) {
+		print("left\n");
+	}
+}
