@@ -49,17 +49,25 @@ game_begin :: () {
 	print("~~ Game Begin ~~\n");
 	game_paused = false;
 
-	w := world_init(startup_level_name);
+	first_world := world_init(startup_level_name);
+	assert(first_world != null);
 	for * worlds {
 		if !is_valid(it) continue;
 		world_begin(it);
 	}
 
-	//@TODO sloppy, this is happening in move_actor_to_world
-	w.focus = w.hero; //@TODO kinda sloppy due to spawn order
-	
-	world_enter(w.hero, w);
-	assert(active_world != null);
+	active_world = first_world;
+
+	// Possess our first available option
+	for * first_world.actors {
+		if !is_valid(it) continue;
+
+		if it.flags & .CanPossess {
+			possess(it);
+			break;
+		}
+	}
+	print("\tInitial world activation: %\n", active_world.name);
 }
 
 game_end :: () {
@@ -335,10 +343,6 @@ World :: struct {
 	actors : [MAX_ACTORS_PER_WORLD] Actor;
 	actors_head := 0;
 	actors_tail := 0;
-
-	//hero_spawn_index := 0; //@CLEAN old
-	//spawn_position : Vector2; //@CLEAN old
-	hero : *Actor; //@TODO remove, looks like we only use this for Markers
 	
 	camera : Camera;
 	focus : *Actor;
@@ -445,8 +449,14 @@ vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0.) -> Vec
 	return result;
 }
 
+set_active_world :: (actor : *Actor) {
+	assert(actor.flags & .Possessed != 0);
+	active_world = actor.world;
+	active_world.focus = actor;
+}
+
 world_enter_begin :: (a : *Actor, world : *World) {
-	assert(a.type == .Hero);
+	assert(a.flags & .Possessed != 0);
 	a.world.transition_time = WORLD_TRANSITION_TIME;
 	a.world.transition_actor = a;
 	a.world.transition_world = world;
@@ -455,11 +465,6 @@ world_enter_begin :: (a : *Actor, world : *World) {
 	// update the parent world we're warping to
 	// There can be multiple parent worlds associated with this world.
 	world.parent = a.world;
-
-	//@TODO need to consider how pausing world ticks effects other nested worlds
-	//CLEAN exit world?
-	//world.transition_time = WORLD_TRANSITION_TIME;
-
 	play_sound(.Warp);
 }
 
@@ -473,6 +478,8 @@ world_enter_end :: (world : *World) {
 }
 
 world_enter :: (a : *Actor, world : *World) {
+	assert(a.flags & .Possessed != 0);
+
 	// warp to the pos of target world's exit
 	pos := Vector2.{};
 	for world.actors { //@OPTIMIZE iterate on world.head/tail
@@ -483,7 +490,9 @@ world_enter :: (a : *Actor, world : *World) {
 			break;
 		}
 	}
-	world_warp(a, world, pos);
+	new_actor := move_actor_to_world(a, world, pos);
+	assert(!is_valid(a));
+	set_active_world(new_actor);
 }
 
 world_exit_begin :: (a : *Actor) {
@@ -512,7 +521,7 @@ world_exit :: (a : *Actor) {
 		if !is_valid(it) continue;
 
 		// set our focus to the exit
-		if a.type == .Hero && it.type == .WorldExit {
+		if it.type == .WorldExit && a.flags & .Possessed {
 			a.world.focus = it;
 			break;
 		}
@@ -528,23 +537,12 @@ world_exit :: (a : *Actor) {
 			break;
 		}
 	}
-	world_warp(a, a.world.parent, pos);
 
-	sfx := play_sound(.Warp);
-	if sfx {
-		//sfx.user_volume_scale = random_get_within_range(0.15, 0.2);
-		sfx.rate_scale = .7; 
-	}
-}
+	new_actor := move_actor_to_world(a, a.world.parent, pos);
+	assert(!is_valid(a));
+	set_active_world(new_actor);
 
-world_warp :: (a : *Actor, world : *World, pos := Vector2.{}) {
-	assert(is_valid(world));
-	assert(is_valid(a));
-	assert(a.type == .Hero);
-
-	print("warping to world: % | actor=%\n", world.name, a.type);
-	active_world = world;
-	move_actor_to_world(a, active_world, pos);
+	play_sound(.Warp, pitch_min=.7, pitch_max=.7);
 }
 
 move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *Actor{
@@ -576,12 +574,8 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	}
 
 	//@TODO generic proc in the Actor
+	//new_actor.proc_on_world_move(new_actor);
 	if new_actor.type == {
-		case .Hero; {
-			world.focus = new_actor;
-			world.hero = new_actor;
-			active_world = world;
-		}
 		case .WorldEntrance; {
 			// update the linked worlds along with their depth (level of nesting)
 			new_actor.child_world.parent = world;
@@ -766,7 +760,6 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 
 	{ // background fill
 		color := world.background_fill * get_world_color(world);
-		//color := world.background_fill * get_nest_color(world.depth); @CLEAN
 		draw_square(.{window_clip.x, window_clip.y}, .{window_clip.w, window_clip.h}, color);
 	}
 	
@@ -1097,6 +1090,8 @@ Actor :: struct {
 	proc_onlifetime_expired : ActorProc;
 
 	held_item : *Actor;
+	weight : u8 = 0;
+	strength : u8 = 0;
 
 	children : [..]*Actor;
 	parent : *Actor;
@@ -1108,18 +1103,20 @@ ActorType :: enum s64 #specified {
 
 	Hero		:: 0;
 	Marker		:: 1;
-	Block 		:: 2; //@CLEAN
+	Block 		:: 2;
 	Tile_Red 	:: 3;
 	WorldEntrance :: 4;
 	WorldExit 	:: 5; // warps to the parent world
 	Key 		:: 6;
 
-	//Block 		:: 1000; @CLEAN
+	//Hero :: 1000; //@TODO scuffed enum values for now
+	HeroRed		:: 1001; 
 }
 
 ActorFlags :: enum_flags s64 {
 	Initialized		:: 1;
-	Spawnable		:: 1<<1; //@TODO not used?
+	CanPossess 		:: 1 <<2;
+	Possessed 		:: 1 <<3;
 
 	CanPickup		:: 1<<19;
 	Pickupable		:: 1<<20;
@@ -1129,7 +1126,10 @@ ActorFlags :: enum_flags s64 {
 get_actor_tid :: (type : ActorType) -> TextureID {
 	if type== {
 		case .Hero; 			return TextureID.Hero;
-		case .Block;			return TextureID.Tile_01; //@CLEAN
+		case .HeroRed; 			return TextureID.HeroRed;
+
+		case .Block;			return TextureID.Tile_01;
+		
 		case .Tile_Red;			return TextureID.Tile_Magma;
 		case .Marker; 			return TextureID.Marker;
 		case .WorldEntrance; 	return TextureID.Entrance;
@@ -1190,6 +1190,13 @@ deinit_actor :: (a : *Actor) {
 	a.flags = 0;
 }
 
+destroy :: (a : *Actor) {
+	deinit_actor(a);
+	collider_reset(*a.body);
+	collider_reset(*a.interact_collider);
+	array_reset_keeping_memory(*a.children);
+}
+
 // hero configs
 HERO_SPEED_DEFAULT 	:: Vector2.{50,50};
 HERO_SPEED_FAST 	:: Vector2.{200,200};
@@ -1208,6 +1215,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 	
 	if a.type == {
 		case .Hero; {
+			a.flags |= .CanPossess;
 			a.speed = HERO_SPEED_DEFAULT;
 			a.body.type = .Dynamic;
 			a.body.size = .{12,12};
@@ -1218,65 +1226,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.interact_collider.is_a = .Pawn;
 			a.interact_collider.collides_with = .Pawn;
 
-			assert(a.world.hero == null);
-			a.world.hero = a;
-			//a.world.spawn_position = a.position; @CLEAN
-			a.world.focus = a;
-
-			a.proc_tick_pure = (a : *Actor, dt : float) {
-				assert(a.world == active_world, "world=%, active=%", a.world.name, active_world.name);
-				assert(a.type == .Hero);
-
-				// movement
-				dv : Vector2;
-			    if input_up  dv.y += 1.;
-			    if input_down dv.y -= 1.;
-			    if input_right dv.x += 1.;
-			    if input_left dv.x -= 1.;
-
-				a.position.x += dv.x * a.speed.x * dt;
-				a.position.y += dv.y * a.speed.y * dt;
-
-			    // item pickups
-			    if is_input_pressed(69) { //E
-			    	if a.held_item {
-			    		item_drop(a);
-			    	}
-			    	else
-			    	{
-			    		w := a.world;
-			    		for i : w.actors_head..w.actors_tail {
-							b := *w.actors[i];
-				    		if !is_valid(b) continue;
-				    		if b.flags & .Pickupable == 0 continue;
-				    		if !is_in_partition_range(a, b) continue;
-
-				    		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
-				    			item_pickup(b, a);
-
-				    			// pickup our first one
-				    			//@TODO refine this to base on direction
-				    			break;
-				    		}
-				    	}
-			    	}
-		    	}
-			    // Interact
-		    	if is_input_pressed(81) { //Q
-					w := a.world;
-		    		for i : w.actors_head..w.actors_tail {
-						b := *w.actors[i];
-			    		if !is_valid(b) continue;
-			    		if b.flags & .Pickupable == 0 continue;
-			    		if !is_in_partition_range(a, b) continue;
-
-			    		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
-			    			interact(b, a);
-			    			break;
-			    		}
-			    	}
-		    	}
-			}
+			a.proc_tick_pure = player_tick_pure;
 		}
 
 		case .WorldEntrance; {
@@ -1285,6 +1235,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.size = .{SUBCLIP_SIZE_DEFAULT/4.,SUBCLIP_SIZE_DEFAULT/4.};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
+			a.weight = 1;
 
 			// link this world to a child world
 			a.child_world = get_world(spawner.data);
@@ -1306,6 +1257,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.size = .{16,16};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
+			a.weight = 1;
 			a.world.focus = a;
 			a.world.focus_default = a;
 
@@ -1338,11 +1290,81 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 	return a;
 }
 
-destroy :: (a : *Actor) {
-	deinit_actor(a);
-	collider_reset(*a.body);
-	collider_reset(*a.interact_collider);
-	array_reset_keeping_memory(*a.children);
+// Player takes control of this actor
+possess :: (a : *Actor) {
+	assert(a.flags & .CanPossess != 0);
+	assert(a.flags & .Possessed == 0);
+
+	a.flags |= .Possessed;
+
+	//@TODO not sure if we need to do this here
+	a.world.focus = a;
+
+	print("\n Possessed ActorType=%\n", a.type);
+}
+
+//@TODO this needs to be called when possessing a new target
+//unpossess :: (a : *Actor) {
+//	assert(a.flags & .CanPossess != 0);
+//	assert(a.flags & .Possessed != 0);
+//
+//	a.flags &= ~.Possessed;
+//}
+
+player_tick_pure :: (a : *Actor, dt : float) {
+	assert(a.world == active_world, "world=%, active=%", a.world.name, active_world.name);
+	assert(a.type == .Hero); //@TODO phase out this Hero type
+	assert(a.flags & (.CanPossess | .Possessed) != 0);
+
+	// movement
+	dv : Vector2;
+    if input_up  dv.y += 1.;
+    if input_down dv.y -= 1.;
+    if input_right dv.x += 1.;
+    if input_left dv.x -= 1.;
+
+	a.position.x += dv.x * a.speed.x * dt;
+	a.position.y += dv.y * a.speed.y * dt;
+
+    // item pickups
+    if is_input_pressed(69) { //E
+    	if a.held_item {
+    		item_drop(a);
+    	}
+    	else
+    	{
+    		w := a.world;
+    		for i : w.actors_head..w.actors_tail {
+				b := *w.actors[i];
+	    		if !is_valid(b) continue;
+	    		if b.flags & .Pickupable == 0 continue;
+	    		if !is_in_partition_range(a, b) continue;
+
+	    		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
+	    			item_pickup(b, a);
+
+	    			// pickup our first one
+	    			//@TODO refine this to base on direction
+	    			break;
+	    		}
+	    	}
+    	}
+	}
+    // Interact
+	if is_input_pressed(81) { //Q
+		w := a.world;
+		for i : w.actors_head..w.actors_tail {
+			b := *w.actors[i];
+    		if !is_valid(b) continue;
+    		if b.flags & .Pickupable == 0 continue;
+    		if !is_in_partition_range(a, b) continue;
+
+    		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
+    			interact(b, a);
+    			break;
+    		}
+    	}
+	}
 }
 
 attach :: (parent : *Actor, child : *Actor, offset := Vector2.{0,0}, keep_body_enabled := false) {
@@ -1367,9 +1389,18 @@ is_holding_item :: (actor : *Actor) -> bool {
 	return actor.held_item != null;
 }
 
+can_pickup_item :: (item : *Actor, owner : *Actor) -> bool {
+	return item.weight <= owner.strength;
+}
+
 item_pickup :: (item : *Actor, owner : *Actor) {
 	assert(item != null);
 	assert(owner != null);
+
+	if !can_pickup_item(item, owner) {
+		sfx := play_sound(.PickupStart, vol_min=0.15, vol_max=0.2, pitch_min=0.4, pitch_max=0.5);
+		return;
+	}
 
 	if is_holding_item(owner)
 		item_drop(owner);
@@ -1462,6 +1493,7 @@ register_cheats :: () {
 		// Put a secret behind there?
 	});
 
+	/* @TODO maybe reimplement, active_world.hero was removed
 	register_cmd("fast", (args: .. Any) { 
 		// make hero fast
 		//@DESIGN a more fun idea would decrease the hero tick dt
@@ -1472,7 +1504,8 @@ register_cheats :: () {
 		// make hero slow, default
 		active_world.hero.speed = HERO_SPEED_DEFAULT;
 	});
-
+	*/
+	
 	//@TODO hid this behind a DEBUG build define
 	register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
 }

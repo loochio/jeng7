@@ -78,6 +78,7 @@ draw_pallet :: () {
 
 TextureID :: enum s64 {
 	Hero;
+	HeroRed;
 
 	Entrance;
 	Exit;
@@ -108,6 +109,7 @@ init_textures :: () {
 	}
 
 	load(.Hero, 	"hero3/hero3.png");
+	load(.HeroRed, 	"hero_red/hero_red.png");
 	load(.Entrance, "entrance/entrance.png");
 	load(.Exit, 	"exit/exit.png");
 	load(.ExitOutline, 	"outline/outline.png");
@@ -139,6 +141,8 @@ sprites : [TextureID.COUNT] Sprite;
 
 init_sprites :: () {
 	sprites[TextureID.Hero] 	= init_sprite(.Hero, frames=2, play_length=1);
+	sprites[TextureID.HeroRed] 	= init_sprite(.HeroRed, frames=2, play_length=1);
+
 	sprites[TextureID.Entrance] = init_sprite(.Entrance);
 	sprites[TextureID.Exit] 	= init_sprite(.Exit, frames=4, play_length=1);
 	sprites[TextureID.ExitOutline] 	= init_sprite(.Exit, layer=-1);
@@ -202,8 +206,14 @@ init_sound :: () {
 
 sfx_assets : [Sfx_ID.COUNT] SfxAsset; 
 
-play_sound :: (id : Sfx_ID) -> *Sound_Stream {
-	return play_sound(*sfx_assets[id].data);
+//@TODO probably merge this API with engine.play_sound()
+play_sound :: (id : Sfx_ID, vol_min := 1., vol_max := 1., pitch_min := 1., pitch_max := 1.) -> *Sound_Stream {
+	sfx := play_sound(*sfx_assets[id].data);
+    if sfx {
+    	sfx.user_volume_scale = random_get_within_range(vol_min, vol_max);
+		sfx.rate_scale = random_get_within_range(pitch_min, pitch_max); 
+    }
+    return sfx;
 }
 
 // ~~~~~~~~~~~ vfx ~~~~~~~~~~~ 

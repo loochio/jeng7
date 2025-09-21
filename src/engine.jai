@@ -652,7 +652,8 @@ load_sound :: (name: string) -> Sound_Data {
 }
 
 //@TODO need play_sound_random(pitch_min, pitch_max, vol_min, vol_max)
-play_sound :: (data: *Sound_Data, category := Sound_Category.GENERAL_SFX) -> *Sound_Stream {
+play_sound :: (data: *Sound_Data, category := Sound_Category.GENERAL_SFX) -> *Sound_Stream 
+{
     stream := Sound.make_stream(data, category);
     start_playing(stream);
     return stream;
