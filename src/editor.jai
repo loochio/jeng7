@@ -35,7 +35,7 @@ editor_init :: () {
 
 	register_tool(*tool_selection);
 	register_tool(*tool_actor);
-	register_tool(*tool_move);
+	//register_tool(*tool_move); @CLEAN
 	tool = tool_selection; //default
 
 	register_cmd("save", (args: .. Any) { editor_save(); });
@@ -59,7 +59,6 @@ editor_init :: () {
 		//editor_load(prev_level_name); //@CLEAN
 	} );
 
-
 	// Init subwindow UI
 	{ // level 
         r := get_rect(0, xx (window_height-120), 600, 120);
@@ -74,7 +73,7 @@ editor_init :: () {
         subwindow_info_tools.title_text = "Tools";
     }
     { // details 
-        r := get_rect(xx (window_width-300), xx (window_height-300), 300, 300);
+        r := get_rect(xx (window_width-300), 0, 300, 300);
         subwindow_info_details.rect = r;
         subwindow_info_details.draw = draw_subwindow_details;
         subwindow_info_details.title_text = "Details";
@@ -118,30 +117,21 @@ editor_tick :: (dt : float) {
 
 	// cursor updates
 	mv := vec_window_to_editor(mouse_pos_window);
-
-	if cursor_snap_to_grid {
-		gx := cast(s64)(mv.x / GRID_SIZE);
-		gx2 : float = ifx mv.x >= 0 then gx + 0.5 else gx - 0.5;
-		gx2 *= GRID_SIZE;
-		cursor_box.x = gx2;
-
-		gy := cast(s64)(mv.y / GRID_SIZE);
-		gy2 : float = ifx mv.y >= 0 then gy + 0.5 else gy - 0.5;
-		gy2 *= GRID_SIZE;
-		cursor_box.y = gy2;
-	}
-	else {
-		cursor_box.x = mv.x;
-		cursor_box.y = mv.y;
-	}
+	cp := to_editor_grid(mv);
+	cursor_box.x = cp.x;
+	cursor_box.y = cp.y;
 
 	// tool keybind/init mapping
-	for t : tools {
-		if is_input_pressed(t.key){
-			tool = t;
-			tool_index = cast(s32)it_index;
+	//@HACK we're skipping these keybinds when ui_hit. It's just so we don't
+	// do tool keybinds when we're typing in text input fields. 
+	if !ui_hit_this_frame {
+		for t : tools {
+			if is_input_pressed(t.key){
+				tool = t;
+				tool_index = cast(s32)it_index;
 
-			if t.proc_init t.proc_init(t);
+				if tool.proc_init tool.proc_init(*tool);
+			}
 		}
 	}
 
@@ -158,6 +148,12 @@ editor_tick :: (dt : float) {
 		if event.wheel_delta < 0 editor_camera.zoom = clamp(editor_camera.zoom-0.1, 0.05, editor_camera.zoom);
     }
 
+    // move selections
+    if is_input_pressed(.ARROW_UP)  	editor_selection_move(.{0,GRID_SIZE});
+	if is_input_pressed(.ARROW_DOWN)  	editor_selection_move(.{0,-GRID_SIZE});
+	if is_input_pressed(.ARROW_RIGHT)  	editor_selection_move(.{GRID_SIZE, 0});
+	if is_input_pressed(.ARROW_LEFT) 	editor_selection_move(.{-GRID_SIZE, 0});
+
 	// save
 	if is_input_pressed(83 /*s*/) && input_mod_ctrl { editor_save(); }
 
@@ -171,7 +167,7 @@ editor_render :: (dt : float) {
 	origin := vec_editor_to_window(.{0,0});
 	scale := Vector2.{editor_camera.zoom, editor_camera.zoom};
 	grid_cell_size = scalar_to_window(GRID_SIZE) * editor_camera.zoom;
-	line := scalar_to_window(8) * editor_camera.zoom;
+	line := scalar_to_window(4) * editor_camera.zoom;
 
 	//grid
 	//@TODO draw these as lines
@@ -190,12 +186,14 @@ editor_render :: (dt : float) {
 		render_sprite(sprite, pos, scale);
 	}
 
-	{ //cursor
+ 	// cursor
+	if !ui_hit_this_frame {
+		color := ifx input_mod_ctrl then RED else ifx input_mod_shift then ORANGE else YELLOW;
 		cp := vec_editor_to_window(Vector2.{cursor_box.x, cursor_box.y});
-		draw_box(.{cp.x, cp.y, grid_cell_size, grid_cell_size}, YELLOW, line);
+		draw_box(.{cp.x, cp.y, grid_cell_size, grid_cell_size}, color, line);
 	}
 	
-	//@CLEAN debug orgin
+	// debug world origin
 	draw_circle(origin, 5, color=GREEN);
 
 	if tool.proc_render tool.proc_render(*tool, dt);
@@ -255,10 +253,50 @@ draw_subwindow_level :: (state: *Subwindow_State, r: Rect, data: *void) {
 
 
 draw_subwindow_details :: (state: *Subwindow_State, r: Rect, data: *void) {
+	root := r;
+	th := hud_theme.label_theme;
+	th.alignment = .Left;
+	line := 1;
+	p := 4.;
+	lh := cast(float)hud_font_pixel_height+p;
+	count := selected_spawner_idxs.count;
 
-	//@TODO render selected_spawner info
-	// allow to edit data
+	{ // selection count
+		r0 := Rect.{root.x, root.y+root.h-lh, root.w, lh};
+		text := tprint("Selecting % spawners", count);
+    	label(r0, text, *th);
+    	root.h -= r0.h;
+	}
 
+	// display the first selection
+	if count > 0 {
+		spawner := get_selection();
+
+		r0 := Rect.{root.x, root.y+root.h-lh, root.w, lh};
+		text := tprint("ActorType: %", spawner.type);
+    	label(r0, text, *th);
+    	root.h -= r0.h;
+
+    	r0 = Rect.{root.x, root.y+root.h-lh, root.w, lh};
+		text = tprint("Position: %", spawner.position);
+    	label(r0, text, *th);
+    	root.h -= r0.h;
+
+    	r0 = Rect.{root.x, root.y+root.h-lh, root.w*.25, lh};
+		text = tprint("Data:");
+    	label(r0, text, *th);
+
+    	r0 = Rect.{root.x+root.w*.25, root.y+root.h-lh, root.w*.75, lh};
+    	preview := tprint(spawner.data);
+    	action, data_text, state := text_input(r0, preview, *hud_theme.text_input_theme);
+    	if action & .ENTERED  {
+    		reset(state);
+    		string_reset(*spawner.data);
+			spawner.data = sprint(data_text);
+			dirty = true;
+    	}
+    	root.h -= r0.h;
+	}
 }
 
 editor_save :: () {
@@ -276,11 +314,7 @@ editor_load :: (name : string) {
 
 	success := level_load(name, *editor_level);
 
-	if !success  return;
-
-	//@CLEAN
-	//assert(name == editor_level.name, "name=% editor=%", name, editor_level.name);
-	dirty = false;
+	if success  dirty = false;
 }
 
 editor_reload :: () {
@@ -328,6 +362,62 @@ vec_window_to_editor :: (v : Vector2) -> Vector2 {
 	result.y /= scale;
 	result = result + editor_camera.position;
 	return result;
+}
+
+to_editor_grid :: (pos : Vector2) -> Vector2 {
+	if !cursor_snap_to_grid return pos;
+
+	result : Vector2;
+	gx := cast(s64)(pos.x / GRID_SIZE);
+	gx2 : float = ifx pos.x >= 0 then gx + 0.5 else gx - 0.5;
+	gx2 *= GRID_SIZE;
+	result.x = gx2;
+
+	gy := cast(s64)(pos.y / GRID_SIZE);
+	gy2 : float = ifx pos.y >= 0 then gy + 0.5 else gy - 0.5;
+	gy2 *= GRID_SIZE;
+	result.y = gy2;
+
+	return result;
+}
+
+editor_spawner_add :: (spawner : ActorSpawner) {
+	array_add(*editor_level.spawners, spawner);
+	dirty = true;
+}
+
+editor_spawner_delete :: (space : BoxFloat) {
+	for < editor_level.spawners {
+		spawner := it;
+		if is_in_box(spawner.position, space) {
+			print("DELETE: %\n", spawner);
+			array_unordered_remove_by_index(*editor_level.spawners, it_index);
+			spawner_reset(*spawner);
+		}
+	}
+	dirty = true;
+}
+
+is_occupied :: (space : BoxFloat) -> bool{
+	for editor_level.spawners {
+		if is_in_box(it.position, space) {
+			return true;
+		}
+	}
+	return false;
+}
+
+editor_spawner_move :: (spawner : *ActorSpawner, pos : Vector2) {
+	spawner.position = to_editor_grid(pos);
+	dirty = true;
+}
+
+editor_selection_move :: (dv : Vector2) {
+	for selected_spawner_idxs {
+		spawner := get_selection(it_index);
+		pos := spawner.position + dv;
+		editor_spawner_move(spawner, pos);
+	}
 }
 
 // ~~~~~~ TOOLS ~~~~~~
@@ -381,55 +471,52 @@ register_tool :: (tool : *EditorTool) {
 EditorTool_Actor :: struct {
 	#as using tool : EditorTool;
 
-	actor_type : ActorType;
+	actor_type := ActorType.Block;
 	actor_data : string;
-	prev_placement : Vector2;
 }
 
 tool_actor :: EditorTool_Actor.{
 	name = "Actors",
 	key = 65, /*a*/
+
+	proc_init = tool_init_actor,
 	proc_tick = tool_tick_actor,
 	proc_render = tool_render_actor,
 	proc_render_in_subwindow = tool_render_in_subwindow_actor,
 };
 
-/* @CLEAN
-tool_actor :: EditorTool.{
-	name = "Actors",
-	key = 65,
-	proc_tick = tool_tick_actor,
-	proc_render = tool_render_actor,
-	proc_render_in_subwindow = tool_render_in_subwindow_actor,
-};
-*/
-
-//@CLEAN
-//tool_actor_type : ActorType; //@CLEAN
-//tool_actor_data : string;	//@CLEAN
-//tool_actor_prev_placement : Vector2;
-
+tool_init_actor :: (tool : *EditorTool) {
+	assert(tool != null);
+	atool := cast(*EditorTool_Actor) tool;
+	atool.actor_type = .Block;
+}
 
 tool_tick_actor :: (t : *EditorTool, dt : float) {
 	if ui_hit_this_frame return;
 
 	atool := cast(*EditorTool_Actor) t;
 
-	if is_input_pressed(.MOUSE_BUTTON_LEFT) { 
-		cp := Vector2.{cursor_box.x, cursor_box.y};
-		if atool.prev_placement != cp {
-			spawner := ActorSpawner.{
-				atool.actor_type,
-				//tool_actor_type,  @CLEAN
-				cp,
-				Vector2.{1,1},
-				atool.actor_data,
-			};
-			array_add(*editor_level.spawners, spawner);
-			atool.prev_placement = cp;
-			dirty = true;
+	if is_input_down(.MOUSE_BUTTON_LEFT) {
+		// delete
+		if input_mod_ctrl {
+			editor_spawner_delete(cursor_box);
+			return;
 		}
+		// add
+		else {
+			if !is_occupied(cursor_box) {
+				editor_spawner_add(ActorSpawner.{
+					atool.actor_type, 
+					.{cursor_box.x, cursor_box.y}, 
+					.{1,1}, 
+					atool.actor_data}
+				);
+			}
+		}
+		
 	}
+
+	//@TODO [SHIFT] get selection, fill on release
 }
 
 tool_render_actor :: (t : *EditorTool, dt : float) {}
@@ -527,6 +614,8 @@ clear_selection :: () {
 }
 
 tool_tick_selection :: (t : *EditorTool, dt : float) {
+	if ui_hit_this_frame return;
+
 	// begin selection
 	if is_input_pressed(.MOUSE_BUTTON_LEFT) {
 		if !input_mod_shift && !input_mod_ctrl{
@@ -587,11 +676,12 @@ tool_render_selection :: (t : *EditorTool, dt : float) {
 	draw_box(.{sp.x, sp.y, w, h}, CYAN, line);
 
 	// active selection
-	for selected_spawner_idxs {
+	for < selected_spawner_idxs {
 		spawner := editor_level.spawners[it];
-		//spawner := get_selection(); @CLEAN
 		sp := vec_editor_to_window(spawner.position);
-		draw_box(.{sp.x, sp.y, grid_cell_size, grid_cell_size}, MAGENTA, line*0.5);
+		color := ifx it_index == 0 then MAGENTA else MAGENTA*0.50;
+		color.w = 1;
+		draw_box(.{sp.x, sp.y, grid_cell_size, grid_cell_size}, color, line*0.5);
 	}
 }
 
@@ -613,7 +703,6 @@ tool_render_in_subwindow_selection :: (t : *EditorTool, state: *Subwindow_State,
 	if has_selection() {
 		for selected_spawner_idxs {
 			spawner := editor_level.spawners[it];
-			//spawner := get_selection(); @CLEAN
 			line := 3+it_index;
 			r0 := Rect.{r.x, r.y+r.h-lh*line, r.w, lh};
 			text := tprint("Selection: % [%]", spawner.type, spawner.position);
@@ -623,11 +712,12 @@ tool_render_in_subwindow_selection :: (t : *EditorTool, state: *Subwindow_State,
 }
 
 
+//@CLEAN
 //~~~ Move Tool ~~~
-
+/*
 tool_move :: EditorTool.{
 	name = "Move",
-	key = 77, /*m*/
+	key = 77, //m
 	proc_tick = tool_tick_move,
 };
 
@@ -645,3 +735,4 @@ tool_tick_move :: (t : *EditorTool, dt : float) {
 		print("left\n");
 	}
 }
+*/

@@ -127,7 +127,8 @@ init_textures :: () {
 	load(.Marker, 	"marker/marker.png");
 	load(.Pebble, 	"pebble/pebble.png");
 
-	load(.Tile_01, 		"tile_water_01.png");
+	load(.Tile_01, 		"tile_block/tile_block.png");
+	//load(.Tile_01, 		"tile_water_01.png");
 	load(.Tile_Magma, 	"tile_magma/tile_magma.png");
 
 	load(.DropZone, 	"dropzone/dropzone.png");

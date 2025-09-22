@@ -100,6 +100,7 @@ Camera :: struct {
 WHITE 		:: Vector4.{1,1,1,1};
 BLACK 		:: Vector4.{0,0,0,1};
 RED 		:: Vector4.{1,0,0,1};
+ORANGE 		:: Vector4.{1,.5,0,1};
 GREEN 		:: Vector4.{0,1,0,1};
 BLUE 		:: Vector4.{0,0,1,1};
 MAGENTA 	:: Vector4.{1,0,1,1};

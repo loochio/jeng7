@@ -385,14 +385,6 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 		w.flags |= .Initialized;
 		//w.flags |= .TimeFlipped; make time faster
 		w.depth = depth;
-
-		//@CLEAN
-		// setup global actor ids
-		//for * w.actors {
-		//	actor_id += 1;
-		//	it.id = actor_id;
-		//}
-
 		break;
 	}
 	assert(w != null);
@@ -723,7 +715,10 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 
     	if (a.proc_tick) a.proc_tick(a, dt);
 
-    	a.sprite.flipped = a.direction.x < 0;
+    	if a.body.type != .Static {
+ 	   		a.sprite.flipped = a.direction.x < 0;
+    	}
+		
 		sprite_tick(*a.sprite, dt);
     	
     	a.lifetime_dt += dt;
@@ -785,14 +780,14 @@ get_nest_time :: (nests := 0.) -> float {
 }
 
 get_nest_color :: (nests : float) -> Vector4 {
-	return lerp(BLUE, RED, nests / 3.);
+	return lerp(BLUE, RED, nests / 5.);
 }
 
 get_world_color :: (world : *World) -> Vector4 {
 	if world.timeflags & .TimeInfinite {
 		return G_BLACK;
 	}
-	return lerp(BLUE, RED, world.depth / 3.);
+	return get_nest_color(world.depth);
 }
 
 world_render :: (using world : *World, nests : float, window_clip : BoxFloat, pos_in_window : Vector2, should_render_subworlds := true) {
@@ -882,10 +877,25 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		draw_box(outline, color, thickness);
 
 		// time marker, white box on outline
-		progress := fmod_cycling(world.age,WORLD_TIME_PER_CYCLE) / WORLD_TIME_PER_CYCLE;
-		p := get_box_percent_pos(*outline, progress);
-		size := scalar_to_window(8) * nscale.x;
-		draw_circle(p, size, color=G_WHITE);
+		draw_dot :: (outline : BoxFloat, world : *World, nests : float, nscale : Vector2, offset := 0.) {
+			progress := fmod_cycling(world.age,WORLD_TIME_PER_CYCLE) / WORLD_TIME_PER_CYCLE;
+			progress -= offset;
+			p := get_box_percent_pos(*outline, progress);
+			ofactor := pow(1-offset, 15.);
+			size := scalar_to_window(8 * ofactor) * nscale.x;
+			c := G_WHITE;
+			c.w *= ofactor;
+			if nests < 0 c.w *= 0.1;
+			draw_circle(p, size, color=c);
+		}
+		trails :: 10;
+		for 0..trails {
+			draw_dot(outline, world, nests, nscale, 0.01*it);
+		}
+		//draw_dot(outline, world, nests, nscale);
+		//draw_dot(outline, world, nests, nscale, 0.01);
+		//draw_dot(outline, world, nests, nscale, 0.02);
+		//draw_dot(outline, world, nests, nscale, 0.03);
 	}
 
 	// clear the scissor now so we can set a new one in our recursive subworld_render() call
@@ -988,14 +998,7 @@ ActorSpawner :: struct {
 	position : Vector2;
 	scale := Vector2.{1,1};
 	data : string;
-	//link : ActorLink; @CLEAN
 }
-
-//@CLEAN
-//ActorLink :: struct {
-//	level_name : string;
-//	spawner_id : s64;
-//}
 
 level_save :: (level : *Level) {
 	path := tprint("levels/%.level", level.name);
