@@ -139,6 +139,7 @@ editor_tick :: (dt : float) {
 	for t : tools {
 		if is_input_pressed(t.key){
 			tool = t;
+			tool_index = cast(s32)it_index;
 
 			if t.proc_init t.proc_init(t);
 		}
@@ -277,7 +278,8 @@ editor_load :: (name : string) {
 
 	if !success  return;
 
-	assert(name == editor_level.name, "name=% editor=%", name, editor_level.name);
+	//@CLEAN
+	//assert(name == editor_level.name, "name=% editor=%", name, editor_level.name);
 	dirty = false;
 }
 
@@ -502,7 +504,6 @@ tool_selection :: EditorTool.{
 	proc_render_in_subwindow = tool_render_in_subwindow_selection,
 };
 
-//selected_spawner_idx := -1; @CLEAN
 selected_spawner_idxs : [..] s64;
 selection_box : BoxFloat;
 selection_start : Vector2;
@@ -552,7 +553,14 @@ tool_tick_selection :: (t : *EditorTool, dt : float) {
 					array_unordered_remove_by_value(*selected_spawner_idxs, it_index);
 				}
 				else { // add
-					array_add(*selected_spawner_idxs, it_index);
+					selected_jdx := 0;
+					for j, jdx : selected_spawner_idxs {
+						if j < it_index {
+							selected_jdx = jdx;
+							break;
+						}
+					}
+					array_insert_at(*selected_spawner_idxs, it_index, selected_jdx);
 				}
 			}
 		}

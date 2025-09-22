@@ -98,6 +98,8 @@ TextureID :: enum s64 {
 	Tile_01;
 	Tile_Magma;
 
+	DropZone;
+
 	COUNT;
 }
 
@@ -127,6 +129,8 @@ init_textures :: () {
 
 	load(.Tile_01, 		"tile_water_01.png");
 	load(.Tile_Magma, 	"tile_magma/tile_magma.png");
+
+	load(.DropZone, 	"dropzone/dropzone.png");
 }
 
 textures : [TextureID.COUNT] TextureAsset;
@@ -140,12 +144,19 @@ get_texture :: (id : TextureID) -> *TextureAsset{
 sprites : [TextureID.COUNT] Sprite;
 
 init_sprites :: () {
+	for sprites {
+		sprites[it_index] = init_sprite(.Corpse);
+	}
+
 	sprites[TextureID.Hero] 	= init_sprite(.Hero, frames=2, play_length=1);
 	sprites[TextureID.HeroRed] 	= init_sprite(.HeroRed, frames=2, play_length=1);
 
 	sprites[TextureID.Entrance] = init_sprite(.Entrance);
 	sprites[TextureID.Exit] 	= init_sprite(.Exit, frames=4, play_length=1);
 	sprites[TextureID.ExitOutline] 	= init_sprite(.Exit, layer=-1);
+
+	sprites[TextureID.DropZone] = init_sprite(.DropZone, layer=-100);
+
 
 	sprites[TextureID.Bug] 		= init_sprite(.Bug, frames=4, play_length=0.25);
 	sprites[TextureID.Corpse] 	= init_sprite(.Corpse);
