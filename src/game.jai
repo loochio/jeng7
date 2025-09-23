@@ -694,14 +694,6 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
     if focus != null {
     	fp := focus.position;
     	camera.position = fp;
-    	/* @TODO disabled lerp, maybe make this a flag on camera
-		dist := distance(camera.position, fp);
-		if dist > 0.1 {
-		    camera.position = lerp(camera.position, fp, dt);
-		}
-		else {
-			camera.position = fp;
-		}*/
     }
 	else {
 		camera.position.x = 0;

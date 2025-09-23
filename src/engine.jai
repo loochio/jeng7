@@ -855,16 +855,17 @@ update_ui_hit :: (r : *Rect) {
 
 // Moving this out of the main loop for readability
 debug_rendering :: () {
-	if debug_ui_enabled {
-		draw_text :: (line : s64, format_string: string, args: .. Any) {
-			text := tprint(format_string, ..args);
-			text_width := prepare_text(hud_font, text);
-			text_x := window_width - text_width;
-		    text_y := window_height - hud_font.character_height * line;
-		    draw_prepared_text(hud_font, text_x, text_y, RED);
+	#if DEVELOPER {
+		if debug_ui_enabled {
+			draw_text :: (line : s64, format_string: string, args: .. Any) {
+				text := tprint(format_string, ..args);
+				text_width := prepare_text(hud_font, text);
+				text_x := window_width - text_width;
+			    text_y := window_height - hud_font.character_height * line;
+			    draw_prepared_text(hud_font, text_x, text_y, RED);
+			}
+			draw_text(1, "fps=%", formatFloat(fps, trailing_width=2));
 		}
-		draw_text(1, "fps=%", formatFloat(fps, trailing_width=2));
-		draw_text(2, "ui_hit=%", ui_hit_this_frame);
 	}
 
 	if terminal_enabled {

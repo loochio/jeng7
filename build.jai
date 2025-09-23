@@ -12,8 +12,12 @@ TARGET_PLUGIN_EDITOR :: #string DONE
 default_plugin := "editor";
 DONE
 
-TARGET_PLUGIN_EDITOR2 :: #string DONE
-default_plugin := "editor2";
+DEFINE_DEVELOPER_ON :: #string DONE
+DEVELOPER :: true; 
+DONE
+
+DEFINE_DEVELOPER_OFF :: #string DONE
+DEVELOPER :: false; 
 DONE
 
 #run {
@@ -30,6 +34,10 @@ DONE
     // parse for our starting plugin
     args := options.compile_time_command_line;
     set_default_plugin := false;
+
+    // DEVELOPER by default
+    dev_define := DEFINE_DEVELOPER_ON;
+
     for arg: args {
     	print("arg=%\n", arg);
         if arg == {
@@ -38,10 +46,9 @@ DONE
           	print("Building for plugin: [editor]\n");
           	set_default_plugin = true;
           }
-          case "editor2"; {
-          	add_build_string(TARGET_PLUGIN_EDITOR2, workspace);
-          	print("Building for plugin: [editor2]\n");
-          	set_default_plugin = true;
+
+          case "release"; {
+            dev_define = DEFINE_DEVELOPER_OFF;
           }
         }
     }
@@ -50,6 +57,9 @@ DONE
     	add_build_string(TARGET_PLUGIN_GAME, workspace);
         print("Building for plugin: [game]\n");
     }
+
+    print("Build define [%]\n", dev_define);
+    add_build_string(dev_define, workspace);
 
     compiler_end_intercept(workspace);
 };
