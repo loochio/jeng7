@@ -29,19 +29,20 @@ engine_cfg := EngineConfig.{
 };
 
 main :: () {
-
-	//@CLEAN
-	//#if DEVELOPER {
-	//	default_plugin = "editor";
-	//}
-
 	print("main - detected default plugin [%]\n", default_plugin); // defined in build.jai
 	engine_cfg.startup_plugin = default_plugin;
 
 	array_add(*engine_cfg.plugins, game_plugin);
-	array_add(*engine_cfg.plugins, editor_plugin);
+
+	#if DEVELOPER {
+		array_add(*engine_cfg.plugins, editor_plugin);
+	}
+	
 	engine_init(engine_cfg);
 }
 
 #load "game.jai";
-#load "editor.jai";
+
+#if DEVELOPER {
+	#load "editor.jai";
+}

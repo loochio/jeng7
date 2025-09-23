@@ -35,7 +35,6 @@ editor_init :: () {
 
 	register_tool(*tool_selection);
 	register_tool(*tool_actor);
-	//register_tool(*tool_move); @CLEAN
 	tool = tool_selection; //default
 
 	register_cmd("save", (args: .. Any) { editor_save(); });
@@ -54,7 +53,6 @@ editor_init :: () {
 		}
 	});
 	register_cmd("reload", (args: .. Any) { editor_reload(); }); 
-	register_cmd("edit_clear", (args: .. Any) { editor_erase_spawners(); } );
 	register_cmd("load_prev", (args: .. Any) { 
 		//editor_load(prev_level_name); //@CLEAN
 	} );
@@ -90,6 +88,8 @@ editor_deinit :: () {
 		string_reset(*it);
 	}
 	array_reset(*tool_options);
+	array_reset_keeping_memory(*tools);
+	tool_index = 0;
 }
 
 editor_begin :: () {
@@ -299,6 +299,10 @@ draw_subwindow_details :: (state: *Subwindow_State, r: Rect, data: *void) {
 	}
 }
 
+editor_reset :: () {
+	clear_selection();
+}
+
 editor_save :: () {
 	level_save(*editor_level);
 	dirty = false;
@@ -314,19 +318,15 @@ editor_load :: (name : string) {
 
 	success := level_load(name, *editor_level);
 
-	if success  dirty = false;
+	if success  {
+		dirty = false;
+		editor_reset();
+	}
 }
 
 editor_reload :: () {
 	name := tprint("%", editor_level.name);
 	editor_load(name);
-}
-
-editor_erase_spawners :: () {
-	if editor_level.spawners.data != null {
-		array_reset(*editor_level.spawners);
-		dirty = true;
-	}
 }
 
 editor_new_level :: (name : string) {
@@ -340,6 +340,7 @@ editor_new_level :: (name : string) {
 
 	editor_level.name = sprint(name);
 	dirty = true;
+	editor_reset();
 	print("Editting new level: %\n", editor_level.name);
 }
 
@@ -453,15 +454,15 @@ EditorToolProc_Tick :: #type (t : *EditorTool, dt : float);
 EditorToolProc_Render :: #type (t : *EditorTool, dt : float);
 EditorToolProc_RenderSubWindow :: #type (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void);
 
-tool : EditorTool; //@CLEAN = tool_actor;
+tool : EditorTool;
 tools : [..] *EditorTool;
 tool_options : [..] string;
 tool_index : s32;
 
 register_tool :: (tool : *EditorTool) {
 	assert(tool != null);
-	array_add(*tools, tool);
 
+	array_add(*tools, tool);
 	tool_text := sprint("%", tool.name);
 	array_add(*tool_options, tool_text);
 }

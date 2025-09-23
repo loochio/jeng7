@@ -24,7 +24,8 @@ game_plugin := EnginePlugin.{
 	proc_render = game_render,
 };
 
-startup_level_name :: "hub";
+level_root : string; 	// root level to load from
+level_start : string; 	// level the player will begin in
 
 game_paused := false;
 input_up := false;
@@ -48,19 +49,29 @@ game_deinit :: () {
 game_begin :: () {
 	print("~~ Game Begin ~~\n");
 	game_paused = false;
-
 	actor_id = 0;
-	first_world := world_init(startup_level_name);
-	assert(first_world != null);
+
+	set_configs("game");
+	assert(is_valid(level_root));
+	assert(is_valid(level_start));
+
+	// initialize from the root world
+	root_world := world_init(level_root);
+	assert(root_world != null);
 	for * worlds {
 		if !is_valid(it) continue;
 		world_begin(it);
-	}
 
-	active_world = first_world;
+		if it.name == level_start {
+			active_world = it;
+		}
+	}
+	assert(active_world != null);
+
+	//active_world = first_world; @CLEAN
 
 	// Possess our first available option
-	for * first_world.actors {
+	for * active_world.actors {
 		if !is_valid(it) continue;
 
 		if it.flags & .CanPossess {
@@ -90,9 +101,12 @@ game_restart :: () {
 game_tick :: (dt : float) {
 	if is_input_pressed(.TAB) toggle_pause();
 	if is_input_pressed(.ENTER) game_restart();
-	if is_input_pressed(.F5) {
-		set_plugin("editor"); //@TODO build define out?
-		return;
+
+	#if DEVELOPER {
+		if is_input_pressed(.F5) {
+			set_plugin("editor");
+			return;
+		}
 	}
 
 	if game_paused  return;
@@ -299,21 +313,7 @@ game_render :: (dt : float) {
 	draw_text(5, "[ENTER] Restart");
 	draw_text(6, "[F2] Mute");
 
-	//actor count
-	draw_actor_count :: true;
-	if draw_actor_count {
-		count := 0;
-		for active_world.actors {
-			if is_valid(*it) count += 1;
-		}
-		draw_text(7, "actors=%", count);
-	}
-
-	draw_text(9, "World: % | D[%] | Age=%", active_world.name, active_world.depth, 
-		formatFloat(active_world.age, trailing_width=2));
-
-	draw_text(10, "TimeFlags=%", active_world.timeflags);
-
+	draw_text(9, "World: %", active_world.name);
 
 	if game_paused {
 		text := "PAUSED";
@@ -1074,10 +1074,10 @@ level_load :: (name : string, level : *Level) -> bool {
 		}
 	}
 
-	if name != editor_level.name {
-		print("\told name [%] detected on level=%, updating name\n", editor_level.name, name);
-		string_reset(*editor_level.name);
-		editor_level.name = sprint(name);
+	if name != level.name {
+		print("\told name [%] detected on level=%, updating name\n", level.name, name);
+		string_reset(*level.name);
+		level.name = sprint(name);
 	}
 
 	print("LOADED: name=% | spawners=%\n", level.name, level.spawners.count);
@@ -1665,6 +1665,7 @@ register_cheats :: () {
 		}
 	});
 
+	/*
 	register_cmd("rseet", (args: .. Any) { 
 		// typo, deliberately fuck up the screen bc why not?
 		//@TODO the engine level mod needs to be undone after the next restart
@@ -1679,6 +1680,7 @@ register_cheats :: () {
 		// I can see a fun idea where the sprite moves out of the way, and we can see behind it.
 		// Put a secret behind there?
 	});
+	*/
 
 	/* @TODO maybe reimplement, active_world.hero was removed
 	register_cmd("fast", (args: .. Any) { 
@@ -1695,6 +1697,50 @@ register_cheats :: () {
 	
 	//@TODO hid this behind a DEBUG build define
 	register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
+}
+
+// game.ini settings
+set_configs :: (filename : string) {
+	path := tprint("config/%.ini", filename);
+	buffer, success := read_entire_file(path);
+	defer(free(buffer));
+
+	if !success {
+		print("Failed to load config: %\n", path);
+		return;
+	}
+
+	lines := split(buffer, "\n");
+	for lines {
+		line := trim(it);
+
+		if line.count == 0 continue;
+		if begins_with_nocase(line, "#") continue;
+
+		statement := split(line, "=");
+
+		if statement.count != 2 {
+			print("\t[ERROR] malformed line: %\n", line);
+			continue;
+		}
+
+		key := statement[0];
+		value := trim(statement[1]);
+		if key== {
+			case "root";  {
+				string_reset(*level_root);
+				level_root = sprint(value);
+			}
+			case "start"; {
+				string_reset(*level_start);
+				level_start = sprint(value);
+			}
+		}
+	}
+
+	print("~~~ Loaded configs: % ~~~\n", path);
+	print("\troot: %\n", level_root);
+	print("\tstart: %\n", level_start);
 }
 
 #load "engine.jai";

@@ -237,7 +237,6 @@ set_plugin :: (plugin : string) {
 		prev.proc_deinit();
 	}
 
-	print("Plugin settings [%]\n", active_plugin);
 	active_plugin.proc_init();
 }
 
@@ -825,8 +824,6 @@ tick_emitter :: (emitter: *Particle_Emitter, dt: float) {
 // ~~~ UI ~~~
 
 engine_ui_init :: () {
-	print("Engine UI Init\n");
-
 	// Necessary for GetRect
 	ui_init();
 
@@ -957,6 +954,8 @@ begins_with_count :: (str: string, prefix: string) -> int {
 //@TODO these terminal commands have entered game design territory
 // we'll have to build define these out. maybe? maybe we leave some of these enabled?
 register_commands :: () {
+	#if !DEVELOPER return;
+
 	//register_cmd("test", (args: .. Any) { print("CMD test args=%\n", args); });
 	register_cmd("toggle_ui", (args: .. Any) { debug_ui_enabled = !debug_ui_enabled; });
 	register_cmd("toggle_mute", (args: .. Any) { toggle_mute(); });
