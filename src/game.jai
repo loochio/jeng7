@@ -332,6 +332,8 @@ game_render :: (dt : float) {
 			draw_collider(p, *a.interact_collider);
 		}
 	}
+
+	draw_pallet();
 }
 
 // ~~~ Worlds ~~~
@@ -397,7 +399,7 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 		if it.type != .WorldEntrance continue;
 
 		level_name := it.data;
-		assert(is_valid(level_name));
+		assert(is_valid(level_name), "%", level_name);
 		if exists(level_name) continue;
 
 		print("recursive world init: %\n", level_name);
@@ -772,7 +774,15 @@ get_nest_time :: (nests := 0.) -> float {
 }
 
 get_nest_color :: (nests : float) -> Vector4 {
-	return lerp(BLUE, RED, nests / 5.);
+	if nests < 0 		return G_PURPLE;
+	else if nests <= 0 	return G_BLUE;
+	else if nests <= 1 	return G_GREEN3;
+	else if nests <= 2 	return G_YELLOW;
+	else if nests <= 3 	return G_ORANGE;
+	else if nests <= 4 	return G_RED;
+	else if nests <= 5 	return G_PURPLE;
+	else				return G_WHITE;
+	//return lerp(BLUE, RED, nests / 5.); @CLEAN
 }
 
 get_world_color :: (world : *World) -> Vector4 {

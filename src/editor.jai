@@ -127,6 +127,7 @@ editor_tick :: (dt : float) {
 	if !ui_hit_this_frame {
 		for t : tools {
 			if is_input_pressed(t.key){
+				print("Tool [%] activated\n", t.name);
 				tool = t;
 				tool_index = cast(s32)it_index;
 
@@ -473,7 +474,7 @@ EditorTool_Actor :: struct {
 	#as using tool : EditorTool;
 
 	actor_type := ActorType.Block;
-	actor_data : string;
+	//actor_data : string; @CLEAN
 }
 
 tool_actor :: EditorTool_Actor.{
@@ -490,6 +491,11 @@ tool_init_actor :: (tool : *EditorTool) {
 	assert(tool != null);
 	atool := cast(*EditorTool_Actor) tool;
 	atool.actor_type = .Block;
+
+	print("\ttool actor: name=%\n", atool.name);
+	print("\ttool actor: key=%\n", atool.key);
+	print("\ttool actor: type=%\n", atool.actor_type);
+	//print("\ttool actor: actor_data=%\n", atool.actor_data); @CLEAN
 }
 
 tool_tick_actor :: (t : *EditorTool, dt : float) {
@@ -507,10 +513,12 @@ tool_tick_actor :: (t : *EditorTool, dt : float) {
 		else {
 			if !is_occupied(cursor_box) {
 				editor_spawner_add(ActorSpawner.{
-					atool.actor_type, 
-					.{cursor_box.x, cursor_box.y}, 
-					.{1,1}, 
-					atool.actor_data}
+						atool.actor_type, 
+						.{cursor_box.x, cursor_box.y}, 
+						.{1,1},
+						"",
+					} 
+					//atool.actor_data} @CLEAN
 				);
 			}
 		}
@@ -563,7 +571,7 @@ tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: 
 	    index +=1;
     }
 
-    //@TODO data input
+/* @CLEAN
     { // spawn data text input
     	rows := ((index / COLUMNS)+1) * AB;
     	rdata := Rect.{r.x, root.y-rows-lh*2-p, r.w, lh};
@@ -577,8 +585,9 @@ tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: 
     	r3.x += r2.w;
     	text_theme := hud_theme.text_input_theme;
     	action, text, state := text_input(r3, "", *text_theme);
-		atool.actor_data = sprint(state.text);
+		atool.actor_data = sprint(state.text); //@CLEAN
     }
+    */
 }
 
 
@@ -711,29 +720,3 @@ tool_render_in_subwindow_selection :: (t : *EditorTool, state: *Subwindow_State,
 		}
 	}
 }
-
-
-//@CLEAN
-//~~~ Move Tool ~~~
-/*
-tool_move :: EditorTool.{
-	name = "Move",
-	key = 77, //m
-	proc_tick = tool_tick_move,
-};
-
-tool_tick_move :: (t : *EditorTool, dt : float) {
-	if is_input_pressed(.ARROW_UP) {
-		print("up\n");
-	}
-	if is_input_pressed(.ARROW_DOWN) {
-		print("down\n");
-	}
-	if is_input_pressed(.ARROW_RIGHT) {
-		print("right\n");
-	}
-	if is_input_pressed(.ARROW_LEFT) {
-		print("left\n");
-	}
-}
-*/
