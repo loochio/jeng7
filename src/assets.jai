@@ -84,6 +84,12 @@ TextureID :: enum s64 {
 	Exit;
 	ExitOutline;
 
+	ButtonA;
+	ButtonPickupA;
+	LockA;
+	LockBig;
+
+
 	Bug;
 	Corpse;
 	Bomb;
@@ -115,6 +121,11 @@ init_textures :: () {
 	load(.Entrance, "entrance/entrance.png");
 	load(.Exit, 	"exit/exit.png");
 	load(.ExitOutline, 	"outline/outline.png");
+
+	load(.ButtonA, 	"button_a/button_a.png");
+	load(.ButtonPickupA, "button_pickup_a/button_pickup_a.png");
+	load(.LockA, 	"lock_a/lock_a.png");
+	load(.LockBig, 	"lock_big_a/lock_big_a.png");
 
 	load(.Bug, 		"bug/bug.png");
 	load(.Corpse, 	"corpse/corpse.png");
@@ -155,6 +166,11 @@ init_sprites :: () {
 	sprites[TextureID.Entrance] = init_sprite(.Entrance);
 	sprites[TextureID.Exit] 	= init_sprite(.Exit, frames=4, play_length=1);
 	sprites[TextureID.ExitOutline] 	= init_sprite(.Exit, layer=-1);
+
+	sprites[TextureID.ButtonA] 	= init_sprite(.ButtonA, frames=2, layer=-50);
+	sprites[TextureID.ButtonPickupA] = init_sprite(.ButtonPickupA, frames=2);
+	sprites[TextureID.LockA] 	= init_sprite(.LockA, frames=2, layer=-50);
+	sprites[TextureID.LockBig] 	= init_sprite(.LockBig, frames=4, layer=-50, frame_size=.{64,64});
 
 	sprites[TextureID.DropZone] = init_sprite(.DropZone, layer=-100);
 

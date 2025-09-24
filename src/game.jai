@@ -116,12 +116,13 @@ game_tick :: (dt : float) {
 	input_left = is_input_down(65) || is_input_down(.ARROW_LEFT); //a
 	input_right = is_input_down(68) || is_input_down(.ARROW_RIGHT); //d
 
+	//@CLEAN
 	// clear interaction flags because of same frame interactions
 	//@TODO this really could be solved by having a ConsumeInput type of data
-	for * active_world.actors {
-		if !is_valid(it) continue;
-		it.flags &= ~.InteractCooldown;
-	}
+	//for * active_world.actors {
+	//	if !is_valid(it) continue;
+	//	it.flags &= ~.InteractCooldown;
+	//}
 
 	// Tick root worlds (ones without a parent)
 	// we start from the negative active world's depth, keeping our active world ticked at depth=0
@@ -530,6 +531,12 @@ world_enter :: (a : *Actor, world : *World) {
 }
 
 world_exit_begin :: (a : *Actor) {
+	//@TODO probably should setup a default parent world we always warp to
+	if a.world.parent == null {
+		print("ERROR No parent world found\n");
+		return;
+	}
+
 	// exit world immediately if not possessed
 	if a.flags & .Possessed == 0{
 		world_exit(a);
@@ -637,10 +644,14 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	return new_actor;
 }
 
+is_world_transitioning :: (world : *World) -> bool {
+	return world.transition_time > 0 ;
+}
+
 // ticking the active world, not subject to nested time
 world_tick_pure :: (using world : *World, dt : float) {
 	// World transitions
-	if transition_time > 0 {
+	if is_world_transitioning(world) {
 		transition_time -= dt;
 		transition_progress = 1. - (transition_time / WORLD_TRANSITION_TIME);
 
@@ -674,6 +685,8 @@ world_tick_pure :: (using world : *World, dt : float) {
 //@TODO is there a way we could schedule an arbitrary tick func? like a Task (struct)
 world_tick :: (using world : *World, dt : float, nests := 0.) {
 	assert(is_valid(world));
+
+	if is_world_transitioning(world) return;
 
 	// Time dilation, time moves faster in nested worlds (think Inception)
 	pure_dt := dt;
@@ -1157,15 +1170,16 @@ Actor :: struct {
 	lifetime_dt := 0.;
 	proc_onlifetime_expired : ActorProc;
 
-	held_item : *Actor;
-	weight : u8 = 0;
-	strength : u8 = 0;
-
 	children : [..]*Actor;
 	parent : *Actor;
 	relative_position : Vector2;
 
-	link : s64 = 0;
+	held_item : *Actor;
+	weight : u8 = 0;
+	strength : u8 = 0;
+	counter := 0; // generic counter used for misc data
+
+	link : s64 = 0; //@CLEAN old, remove
 }
 
 ActorType :: enum s64 #specified {
@@ -1177,17 +1191,16 @@ ActorType :: enum s64 #specified {
 	Tile_Red 	:: 3;
 	WorldEntrance :: 4;
 	WorldExit 	:: 5; // warps to the parent world
-	//Key 		:: 6; @CLEAN
 
 	//Hero :: 1000; //@TODO scuffed enum values for now
 	HeroRed		:: 1001; 
-	Kid			:: 1002;
+	Kid			:: 1002; // gooblet
 
 	Console 		:: 2000;
 	ConsoleMovable 	:: 2001;
 
-	WallLock 		:: 3000; // instant
-	//WallLockTimed 	:: 3001; // 2 second open duration
+	WallLock 		:: 3000; // green lock A (circle)
+	WallLockBig		:: 3001; // big lock (gooblet)
 
 	DropZone 		:: 4000; // causes held items to drop
 }
@@ -1196,12 +1209,23 @@ ActorFlags :: enum_flags s64 {
 	Initialized		:: 1;
 	CanPossess 		:: 1 <<2;
 	Possessed 		:: 1 <<3;
+	BlockWarping	:: 1<<4; // VERY IMPORTANT for exits or else the game logically doesn't make sense
+	DestroyAfterLifetime :: 1<<5;
 
 	Pickupable		:: 1<<19;
 	Interactable	:: 1<<20;
-	BlockWarping	:: 1<<21; // VERY IMPORTANT for exits or else the game logically doesn't make sense
-	InteractCooldown :: 1<<22;
-	DestroyAfterLifetime :: 1<<23;
+	BlockInteract	:: 1<<21;
+	//InteractCooldown :: 1<<22; @CLEAN
+
+	LockA 			:: 1<<23;
+	UnlocksA 		:: 1<<24;
+
+	LockBig 		:: 1<<25;
+	UnlocksBig 		:: 1<<26;
+}
+
+has_flag :: (a: *Actor, flag : ActorFlags) -> bool {
+	return a.flags & flag != 0;
 }
 
 get_actor_tid :: (type : ActorType) -> TextureID {
@@ -1212,10 +1236,10 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 
 		case .Block;			return TextureID.Tile_01;
 
-		case .Console; 			return TextureID.Bush;
-		case .ConsoleMovable;	return TextureID.Pebble;
-		case .WallLock; 		return TextureID.Stone;
-		//case .WallLock; 		return TextureID.Tile_Magma; @CLEAN 
+		case .Console; 			return TextureID.ButtonA;
+		case .ConsoleMovable;	return TextureID.ButtonPickupA;
+		case .WallLock; 		return TextureID.LockA;
+		case .WallLockBig; 		return TextureID.LockBig;
 
 		case .DropZone; 		return TextureID.DropZone;
 
@@ -1224,7 +1248,6 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 		case .Marker; 			return TextureID.Marker;
 		case .WorldEntrance; 	return TextureID.Entrance;
 		case .WorldExit; 		return TextureID.Exit;
-		//case .Key; 				return TextureID.ManaGem; @CLEAN
 	}
 	assert(false, "%", type);
 	return .COUNT;
@@ -1399,43 +1422,44 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		}
 
 		case .Console; {
-			a.flags |= .Interactable;
+			a.flags |= .Interactable | .UnlocksA;
 			a.body.type = .Static;
 			a.body.size = .{16,16};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn | .Wall;
 
-			a.proc_on_interact = console_interact;
+			a.proc_on_interact = console_interact_a;
 			a.proc_onlifetime_expired = console_deinteract;
+
+			sprite_pause(*a.sprite);
 		}
 
 		case .ConsoleMovable; {
-			a.flags |= .Interactable | .Pickupable;
+			a.flags |= .Interactable | .Pickupable | .UnlocksA;
 			a.body.type = .Dynamic;
 			a.body.size = .{16,16};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 
-			a.proc_on_interact = console_interact;
+			a.proc_on_interact = console_interact_a;
 			a.proc_onlifetime_expired = console_deinteract;
+
+			sprite_pause(*a.sprite);
 		}
 
 		case .WallLock; {
+			a.flags |= .LockA;
 			a.body.type = .Static;
 			a.body.size = .{16,16};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn | .Wall;
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
-				if a.body.type != .Inactive {
-					a.body.type = .Inactive;
-					a.sprite = get_sprite(.ExitOutline);
-				}
-				else {
-					a.body.type = .Static;
-					a.sprite = get_actor_sprite(a.type);
-				}
+				sprite_step(*a.sprite);
+				a.body.type = ifx a.body.type == .Inactive then .Static else .Inactive;
 			}
+
+			sprite_pause(*a.sprite);
 		}
 
 		case .DropZone; {
@@ -1448,6 +1472,40 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 				//if a1.flags & .BlockWarping return;
 				
 				if is_holding_item(a1) item_drop(a1);
+			}
+		}
+
+		case .WallLockBig; {
+			a.flags |= .LockBig;
+			a.body.type = .Static;
+			a.body.size = .{32,32};
+			a.body.is_a = .Wall;
+			a.body.collides_with = .Pawn | .Wall;
+			sprite_pause(*a.sprite);
+
+			a.counter = 3;
+
+			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
+				sprite_step(*a.sprite);
+				a.body.type = ifx a.body.type == .Inactive then .Static else .Inactive;
+			}
+
+			a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
+				assert(a0.type == .WallLockBig);
+				if a1.type == .Kid {
+					a0.counter -= 1;
+					destroy(a1);
+					sprite_step(*a0.sprite);
+
+					if a0.counter <= 0 {
+						print("!!! BIG UNLOCK !!!\n");
+						a0.body.type = .Inactive;
+						play_sound(.RoundComplete);
+					}
+					else {
+						play_sound(.RoundBegin);
+					}
+				}
 			}
 		}
 	}
@@ -1523,13 +1581,14 @@ player_tick_pure :: (a : *Actor, dt : float) {
     	}
 	}
     // Interact
-	if is_input_pressed(81) && (a.flags & .InteractCooldown == 0) { //Q
+	if is_input_pressed(81) { //@CLEAN && (a.flags & .InteractCooldown == 0) { //Q
 		w := a.world;
 		for i : w.actors_head..w.actors_tail {
 			b := *w.actors[i];
     		if !is_valid(b) continue;
     		if a == b continue;
     		if b.flags & .Interactable == 0 continue;
+    		if b.flags & .BlockInteract != 0 continue;
     		if !is_in_partition_range(a, b) continue;
 
     		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
@@ -1540,26 +1599,42 @@ player_tick_pure :: (a : *Actor, dt : float) {
 	}
 }
 
-console_interact :: (a : *Actor, interactor : *Actor) {
-	// start lifetime timer
+console_interact_a :: (a : *Actor, interactor : *Actor) {
+	a.flags |= .BlockInteract;
 	a.lifetime = 3.;
 	a.lifetime_dt = 0.;
 
 	// open first time
-	link_actor := get_actor(a.link);
-	interact(link_actor, a);
+	assert(has_flag(a, .UnlocksA));
+	for *w : worlds {
+		if !is_valid(w) continue;
+		for *target : w.actors {
+			if !is_valid(target) continue;
 
-	a.sprite = get_sprite(.ManaGem);
+			if has_flag(target, .LockA) interact(target, a);
+		}
+	}
+
+	sprite_step(*a.sprite);
 	play_sound(.RoundBegin);
 }
 
 console_deinteract :: (a : *Actor) {
+	a.flags &= ~.BlockInteract;
 	a.lifetime = -1.;
-	// close the link
-	link_actor := get_actor(a.link);
-	interact(link_actor, a);
 
-	a.sprite = get_actor_sprite(a.type);
+	// close time
+	assert(has_flag(a, .UnlocksA));
+	for *w : worlds {
+		if !is_valid(w) continue;
+		for *target : w.actors {
+			if !is_valid(target) continue;
+
+			if has_flag(target, .LockA) interact(target, a);
+		}
+	}
+
+	sprite_step(*a.sprite);
 	play_sound(.Pause);
 }
 
@@ -1649,11 +1724,8 @@ item_drop :: (owner : *Actor) {
 interact :: (target : *Actor, interactor : *Actor) {
 	assert(target != null);
 	assert(interactor != null);
-
-	if target.flags & .InteractCooldown return;
-
-	target.flags |= .InteractCooldown;
-	interactor.flags |= .InteractCooldown;
+	assert(target.flags & .BlockInteract == 0);
+	
 	if target.proc_on_interact 
 		target.proc_on_interact(target, interactor);
 }
