@@ -415,6 +415,8 @@ editor_spawner_move :: (spawner : *ActorSpawner, pos : Vector2) {
 }
 
 editor_selection_move :: (dv : Vector2) {
+	if ui_hit_this_frame return;
+	
 	for selected_spawner_idxs {
 		spawner := get_selection(it_index);
 		pos := spawner.position + dv;
@@ -570,24 +572,6 @@ tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: 
 	    }
 	    index +=1;
     }
-
-/* @CLEAN
-    { // spawn data text input
-    	rows := ((index / COLUMNS)+1) * AB;
-    	rdata := Rect.{r.x, root.y-rows-lh*2-p, r.w, lh};
-
-    	r2 := rdata;
-    	r2.w *= 0.2;
-   		label(r2, "Data", *theme);
-
-		r3 := rdata;
-    	r3.w *= 0.8;
-    	r3.x += r2.w;
-    	text_theme := hud_theme.text_input_theme;
-    	action, text, state := text_input(r3, "", *text_theme);
-		atool.actor_data = sprint(state.text); //@CLEAN
-    }
-    */
 }
 
 

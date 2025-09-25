@@ -2,7 +2,7 @@
 
 Idea: Recusive level warping
 Inspirations: Coccoon | Patrick's Parabox | Inception | Antichamber | Sokaban heros (thekla)
-	Talos Principle
+	Talos Principle | Zelda: LTTP
 
 14 Sept 2025 from Moonbase420
 // Dear maintainer: // 
@@ -28,12 +28,6 @@ level_root : string; 	// root level to load from
 level_start : string; 	// level the player will begin in
 
 game_paused := false;
-input_up := false;
-input_down := false;
-input_right := false;
-input_left := false;
-
-debug_colliders := false;
 
 game_init :: () {
 	print("~~ Game Init ~~ \n");
@@ -49,8 +43,10 @@ game_deinit :: () {
 game_begin :: () {
 	print("~~ Game Begin ~~\n");
 	game_paused = false;
+	active_sign.enabled = false;
 	actor_id = 0;
 
+	//@TODO could move to generic engine.init(), reset flow would change a little for hot reload
 	set_configs("game");
 	assert(is_valid(level_root));
 	assert(is_valid(level_start));
@@ -68,8 +64,6 @@ game_begin :: () {
 	}
 	assert(active_world != null);
 
-	//active_world = first_world; @CLEAN
-
 	// Possess our first available option
 	for * active_world.actors {
 		if !is_valid(it) continue;
@@ -79,6 +73,8 @@ game_begin :: () {
 			break;
 		}
 	}
+
+	play_sound(.RoundBegin);
 	print("\tInitial world activation: %\n", active_world.name);
 }
 
@@ -111,10 +107,10 @@ game_tick :: (dt : float) {
 
 	if game_paused  return;
 
-	input_up = is_input_down(87) || is_input_down(.ARROW_UP); //w
-	input_down = is_input_down(83) || is_input_down(.ARROW_DOWN); //s
-	input_left = is_input_down(65) || is_input_down(.ARROW_LEFT); //a
-	input_right = is_input_down(68) || is_input_down(.ARROW_RIGHT); //d
+	if active_sign.enabled {
+		if is_input_pressed(81) sign_hide(); //Q to hide
+		return;
+	}
 
 	//@CLEAN
 	// clear interaction flags because of same frame interactions
@@ -123,6 +119,13 @@ game_tick :: (dt : float) {
 	//	if !is_valid(it) continue;
 	//	it.flags &= ~.InteractCooldown;
 	//}
+
+	//@TODO clearing InteractTarget at the begining of the frame because we don't have
+	// an on_overlap_end type of callback yet
+	for * active_world.actors {
+		if !is_valid(it) continue;
+		it.flags &= ~.InteractTarget;
+	}
 
 	// Tick root worlds (ones without a parent)
 	// we start from the negative active world's depth, keeping our active world ticked at depth=0
@@ -147,6 +150,9 @@ PARTITION_CELL_SIZE :: 75.; // world units, needs to be large enough to cover a 
 PARTITION_RANGE :: 1;
 
 pause_physics := false;
+enable_collisions := true;
+debug_colliders := false;
+
 
 is_in_partition_range :: (a0 : *Actor, a1 : *Actor) -> bool {
 	return abs(a0.partition_cell_x - a1.partition_cell_x) <= PARTITION_RANGE 
@@ -214,6 +220,8 @@ physics_tick :: (using world : *World, dt : float) {
 	// collision resolution
 	for 0..PHYSICS_ITERATIONS 
 	{
+		if !enable_collisions break;
+
 		for i : actors_head..actors_tail {
 			a := *actors[i];
 			if !is_valid(a) continue;
@@ -299,6 +307,29 @@ game_render :: (dt : float) {
 		world_render(active_world, 0, clip, pos_in_window);
 	}
 	
+
+	// clock ui rendering
+	offset := 100.;
+	offset_index := 0;
+	for *w : worlds {
+		if !is_valid(w) continue;
+		for i : w.actors_head..w.actors_tail {
+			a := *w.actors[i];
+			if !is_valid(a) continue;
+
+			// only render active timers
+			if !has_flag(a, .UnlocksA) continue;
+			if a.lifetime <= 0. continue;
+
+			o := offset_index * offset;
+			pos := Vector2.{(xx window_width)-100., (xx window_height)-(100.+o)};
+			render_clock(a, 0, BoxFloat.{}, pos);
+			offset_index += 1;
+		}
+	}	
+	
+
+
 	//@TODO UI Layout rendering
 
 	draw_text :: (line : s64, format_string: string, args: .. Any) {
@@ -312,7 +343,6 @@ game_render :: (dt : float) {
 	draw_text(3, "[Arrows/WASD] Move");
 	draw_text(4, "[TAB] Pause");
 	draw_text(5, "[ENTER] Restart");
-	draw_text(6, "[F2] Mute");
 
 	draw_text(9, "World: %", active_world.name);
 
@@ -324,6 +354,10 @@ game_render :: (dt : float) {
 	    draw_prepared_text(hud_font, text_x, xx text_y, G_BLACK);
 	}
 
+	if active_sign.enabled {
+		sign_render(dt);
+	}
+
 	if debug_colliders {
 		for *a : active_world.actors {
 			if !is_valid(a) continue;
@@ -333,8 +367,6 @@ game_render :: (dt : float) {
 			draw_collider(p, *a.interact_collider);
 		}
 	}
-
-	draw_pallet();
 }
 
 // ~~~ Worlds ~~~
@@ -428,18 +460,19 @@ world_begin :: (world : *World) {
 		assert(a != null);
 	}
 
+	//@CLEAN we went a different direction with this idea
 	// link up any actors we need
-	for *a : world.actors {
-		if !is_valid(a) continue;
-		if a.type == .Console || a.type == .ConsoleMovable{
-			for *b : world.actors {
-				if !is_valid(b) continue;
-				if b.type == .WallLock {
-					a.link = b.id;
-				}
-			}
-		}
-	}
+	///for *a : world.actors {
+	//	if !is_valid(a) continue;
+	//	if a.type == .Console || a.type == .ConsoleMovable{
+	//		for *b : world.actors {
+	//			if !is_valid(b) continue;
+	//			if b.type == .WallLock {
+	//				a.link = b.id;
+	//			}
+	//		}
+	//	}
+	//}
 }
 
 get_world :: (name : string) -> *World{
@@ -525,7 +558,7 @@ world_enter :: (a : *Actor, world : *World) {
 	new_actor := move_actor_to_world(a, world, pos);
 	if new_actor {
 		assert(!is_valid(a));
-		if new_actor.flags & .Possessed
+		if has_flag(new_actor, .Possessed)
 			set_active_world(new_actor);
 	}
 }
@@ -795,7 +828,6 @@ get_nest_color :: (nests : float) -> Vector4 {
 	else if nests <= 4 	return G_RED;
 	else if nests <= 5 	return G_PURPLE;
 	else				return G_WHITE;
-	//return lerp(BLUE, RED, nests / 5.); @CLEAN
 }
 
 get_world_color :: (world : *World) -> Vector4 {
@@ -881,6 +913,18 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		pos += pos_in_window; // recursively add our pos
 
 		render_sprite(*a.sprite, pos, nscale);
+
+		if a.proc_render a.proc_render(a, n, window_clip, pos);
+
+		//@CLEAN
+		//if has_flag(a, .InteractTarget) {
+		//	
+		//	//draw_text(hud_font, xx pos.x, xx pos.y, "[Q] Interact", G_WHITE);
+//
+		//	w := prepare_text(hud_font, "[Q] Interact");
+		//	posi := Vector2.{pos.x-w/2., pos.y};
+		//	draw_prepared_text(hud_font, xx posi.x, xx posi.y, G_WHITE);
+		//}
 	}
 
 	// draw window_clip border 
@@ -907,10 +951,6 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		for 0..trails {
 			draw_dot(outline, world, nests, nscale, 0.01*it);
 		}
-		//draw_dot(outline, world, nests, nscale);
-		//draw_dot(outline, world, nests, nscale, 0.01);
-		//draw_dot(outline, world, nests, nscale, 0.02);
-		//draw_dot(outline, world, nests, nscale, 0.03);
 	}
 
 	// clear the scissor now so we can set a new one in our recursive subworld_render() call
@@ -920,11 +960,28 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 	//@OPTIMIZE we should simplify this to just find WorldEntrance and handle subworld_render(..) here
 	if should_render_subworlds {
 		for a : sorted_actors {
-			if a.proc_render {
+			if a.proc_render_subworld {
 				pos := vec_world_to_window(a.position, world, n);
 				pos += pos_in_window; // recursively add our pos
-				a.proc_render(a, n, window_clip, pos);
+				a.proc_render_subworld(a, n, window_clip, pos);
 			}
+		}
+	}
+
+	// interaction ui
+	for a : sorted_actors {
+		if has_flag(a, .InteractTarget) {
+			//@TODO duplicated with above sprite rendering, clean this up eventually
+			pos := a.position - world.camera.position;
+			pos *= scale;
+			pos.x += window_width/2.;
+			pos.y += window_height/2.;
+			pos += pos_in_window; // recursively add our pos
+
+			w := prepare_text(hud_font, "[Q]");
+			offset := scalar_to_window(20.);
+			posi := Vector2.{pos.x-w/2., pos.y+offset};
+			draw_prepared_text(hud_font, xx posi.x, xx posi.y, G_BLACK);
 		}
 	}
 
@@ -1009,7 +1066,7 @@ Level :: struct {
 }
 
 ActorSpawner :: struct {
-	type : ActorType;
+	type : ActorType; //@TODO could be generalized to s64, justifying the move to engine.jai
 	position : Vector2;
 	scale := Vector2.{1,1};
 	data : string;
@@ -1137,11 +1194,13 @@ Actor :: struct {
 	flags : ActorFlags;
 	world : *World;
 	child_world : *World;
+	payload : string;
 
 	proc_begin : ActorProc;
 	proc_tick : ActorProc_Tick;
 	proc_tick_pure : ActorProc_Tick;
 	proc_render : ActorProc_Render;
+	proc_render_subworld : ActorProc_Render;
 	proc_on_interact : ActorProc_Overlap;
 	proc_on_dropped : ActorProc;
 	proc_on_pickup : ActorProc;
@@ -1203,6 +1262,8 @@ ActorType :: enum s64 #specified {
 	WallLockBig		:: 3001; // big lock (gooblet)
 
 	DropZone 		:: 4000; // causes held items to drop
+
+	Sign 			:: 10000;
 }
 
 ActorFlags :: enum_flags s64 {
@@ -1215,6 +1276,7 @@ ActorFlags :: enum_flags s64 {
 	Pickupable		:: 1<<19;
 	Interactable	:: 1<<20;
 	BlockInteract	:: 1<<21;
+	InteractTarget	:: 1<<22;
 	//InteractCooldown :: 1<<22; @CLEAN
 
 	LockA 			:: 1<<23;
@@ -1232,7 +1294,7 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 	if type== {
 		case .Hero; 			return TextureID.Hero;
 		case .HeroRed; 			return TextureID.HeroRed;
-		case .Kid; 			return TextureID.Bug;
+		case .Kid; 				return TextureID.Bug;
 
 		case .Block;			return TextureID.Tile_01;
 
@@ -1242,6 +1304,8 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 		case .WallLockBig; 		return TextureID.LockBig;
 
 		case .DropZone; 		return TextureID.DropZone;
+
+		case .Sign; 			return TextureID.Sign;
 
 
 		case .Tile_Red;			return TextureID.Tile_Magma;
@@ -1312,9 +1376,11 @@ init_actor :: (world : *World) -> *Actor{
 	return a;
 }
 
+//@TODO why do we have both deinit_actor and destroy??? it should be one path
 deinit_actor :: (a : *Actor) {
 	a.type = .EMPTY;
 	a.flags = 0;
+	string_reset(*a.payload);
 }
 
 destroy :: (a : *Actor) {
@@ -1339,6 +1405,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 	a.type = spawner.type;
 	a.sprite = get_actor_sprite(a.type);
 	a.position = spawner.position;
+	a.payload = sprint(spawner.data);
 	
 	if a.type == {
 		case .Hero; #through;
@@ -1352,7 +1419,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.collides_with = .Wall | .Pawn;
 			a.interact_collider.type = .Trigger;
 			a.interact_collider.size = .{36,36};
-			a.interact_collider.is_a = .Pawn; //@TODO .Hero
+			a.interact_collider.is_a = .Pawn | .Hero;
 			a.interact_collider.collides_with = .Pawn | .Hero;
 
 			a.proc_tick_pure = player_tick_pure;
@@ -1385,7 +1452,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.child_world = get_world(spawner.data);
 			a.child_world.parent = a.world;
 
-			a.proc_render = subworld_render; 
+			a.proc_render_subworld = subworld_render; 
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
 				world_enter_begin(interactor, a.child_world);
@@ -1428,10 +1495,12 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn | .Wall;
 
+			sprite_pause(*a.sprite);
+
 			a.proc_on_interact = console_interact_a;
 			a.proc_onlifetime_expired = console_deinteract;
-
-			sprite_pause(*a.sprite);
+			a.proc_render = render_clock;
+			a.proc_tick = console_tick;
 		}
 
 		case .ConsoleMovable; {
@@ -1441,10 +1510,12 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 
+			sprite_pause(*a.sprite);
+
 			a.proc_on_interact = console_interact_a;
 			a.proc_onlifetime_expired = console_deinteract;
-
-			sprite_pause(*a.sprite);
+			a.proc_render = render_clock;
+			a.proc_tick = console_tick;
 		}
 
 		case .WallLock; {
@@ -1469,9 +1540,10 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.collides_with = .Pawn;
 
 			a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
-				//if a1.flags & .BlockWarping return;
-				
-				if is_holding_item(a1) item_drop(a1);
+				if is_holding_item(a1) {
+					item_drop(a1);
+					play_sound(.Death, vol_min=0.5, vol_max=0.6, pitch_min=0.95, pitch_max=1.1);
+				}
 			}
 		}
 
@@ -1508,6 +1580,18 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 				}
 			}
 		}
+
+		case .Sign; {
+			a.flags |= .Interactable;
+			a.body.type = .Trigger;
+			a.body.size = .{16,16};
+			a.body.is_a = .Wall;
+			a.body.collides_with = .Hero;
+
+			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
+				sign_show(a.payload);
+			}
+		}
 	}
 
 	if a.type == {
@@ -1540,12 +1624,17 @@ possess :: (target : *Actor, current : * Actor = null) {
 }
 
 player_tick_pure :: (a : *Actor, dt : float) {
-	assert(a.flags & (.CanPossess) != 0);
+	assert(has_flag(a, .CanPossess));
 
 	// skip non-possessed heros
-	if  a.flags & .Possessed == 0 return;
+	if !has_flag(a, .Possessed) return;
 
 	// movement
+	input_up := is_input_down(87) || is_input_down(.ARROW_UP); //w
+	input_down := is_input_down(83) || is_input_down(.ARROW_DOWN); //s
+	input_left := is_input_down(65) || is_input_down(.ARROW_LEFT); //a
+	input_right := is_input_down(68) || is_input_down(.ARROW_RIGHT); //d
+
 	dv : Vector2;
     if input_up  dv.y += 1.;
     if input_down dv.y -= 1.;
@@ -1556,13 +1645,14 @@ player_tick_pure :: (a : *Actor, dt : float) {
 	a.position.y += dv.y * a.speed.y * dt;
 
     // item pickups
+	w := a.world;
+
     if is_input_pressed(69) { //E
     	if a.held_item {
     		item_drop(a);
     	}
     	else
     	{
-    		w := a.world;
     		for i : w.actors_head..w.actors_tail {
 				b := *w.actors[i];
 	    		if !is_valid(b) continue;
@@ -1581,22 +1671,32 @@ player_tick_pure :: (a : *Actor, dt : float) {
     	}
 	}
     // Interact
-	if is_input_pressed(81) { //@CLEAN && (a.flags & .InteractCooldown == 0) { //Q
-		w := a.world;
-		for i : w.actors_head..w.actors_tail {
-			b := *w.actors[i];
-    		if !is_valid(b) continue;
-    		if a == b continue;
-    		if b.flags & .Interactable == 0 continue;
-    		if b.flags & .BlockInteract != 0 continue;
-    		if !is_in_partition_range(a, b) continue;
+    interact_target : *Actor;
 
-    		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
-    			interact(b, a);
-    			break;
-    		}
-    	}
+    // find a target
+	for i : w.actors_head..w.actors_tail {
+		b := *w.actors[i];
+		if !is_valid(b) continue;
+		if a == b continue;
+		if b.flags & .Interactable == 0 continue;
+		if b.flags & .BlockInteract != 0 continue;
+		if !is_in_partition_range(a, b) continue;
+
+		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
+			//interact(b, a); @CLEAN
+			interact_target = b;
+			interact_target.flags |= .InteractTarget;
+			break;
+		}
 	}
+
+	if is_input_pressed(81) && interact_target != null { //Q
+		interact(interact_target, a);
+	}
+}
+
+console_tick :: (actor : *Actor, dt : float) {
+	//play_sound(.Pause);
 }
 
 console_interact_a :: (a : *Actor, interactor : *Actor) {
@@ -1636,6 +1736,21 @@ console_deinteract :: (a : *Actor) {
 
 	sprite_step(*a.sprite);
 	play_sound(.Pause);
+}
+
+render_clock :: (a : *Actor, nests : float, clip : BoxFloat, pos_in_window : Vector2) {
+	progress := ifx a.lifetime > 0 then  a.lifetime_dt / a.lifetime else 0.;
+
+	// timer draw circle
+	//@TODO this doesn't account correctly for subworld_rendering
+	if progress > 0 {
+		//pos := vec_world_to_window(a.position, a.world, nests); @CLEAN
+		r := scalar_to_window(12) * get_nest_scale(nests);
+		c := lerp(G_GREEN2, G_RED, progress); //@CLEAN
+		//c := get_nest_color(nests); //@CLEAN
+		draw_circle(pos_in_window, r*1.2, r*.75, G_BLACK);
+		draw_circle(pos_in_window, r, 0, c, progress);
+	}
 }
 
 attach :: (parent : *Actor, child : *Actor, offset := Vector2.{0,0}, keep_body_enabled := false) {
@@ -1730,8 +1845,65 @@ interact :: (target : *Actor, interactor : *Actor) {
 		target.proc_on_interact(target, interactor);
 }
 
-register_cheats :: () {
+Sign :: struct {
+	enabled := false;
+	type := SignType.Yellow;
+	message : string;
+}
 
+SignType :: enum s64 {
+	Yellow :: 1;
+}
+
+active_sign : Sign;
+
+sign_show :: (message : string) {
+	print("sign interact: message=%\n", message);
+	active_sign.enabled = true;
+	active_sign.message = message;
+	play_sound(.Pause);
+}
+
+sign_hide :: () {
+	print("sign hide\n");
+	active_sign.enabled = false;
+	play_sound(.Pause, pitch_min=0.85, pitch_max=0.85);
+}
+
+// draw a posted note with message text
+sign_render :: (dt : float) {
+	pos := Vector2.{window_width/2., window_height/2.};
+	size_win := Vector2.{xx window_width, xx window_height};
+	c := G_PURPLE3;
+	c.w = 0.7;
+	draw_square(pos, size_win, c);
+
+	size := scalar_to_window(400.);
+	draw_square(pos, .{size,size}, G_YELLOW3);
+
+	size2 := scalar_to_window(300.);
+	draw_square(pos, .{size2,size2}, G_YELLOW);
+
+	// draw UI
+	r := Rect.{pos.x-size2/2., pos.y-size2/2., size2, size2};
+	theme : = hud_theme.label_theme;
+	theme.alignment = .Center;
+	{
+		msgs := split(active_sign.message, "|"); //@FIXME leak?
+		lh := r.h*.1;
+		for msgs {
+			i := it_index+1;
+			r0 := Rect.{r.x,r.y+r.h-(lh*i), r.w, lh};
+		    label(r0, it, *theme);
+		}
+	}
+	{
+		r0 := Rect.{r.x,r.y, r.w, r.h*.1};
+	    label(r0, "[Q] Close", *theme);
+	}
+}
+
+register_cheats :: () {
 	//@DESIGN these terminal commands are meant to be found in game.
 	// Knowledge based keys, "unlocks" when entered into the game for the first time
 	// Store that unlock state in GameCareer save profile
@@ -1777,11 +1949,14 @@ register_cheats :: () {
 	});
 	*/
 	
-	//@TODO hid this behind a DEBUG build define
-	register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
+	#if DEVELOPER {
+		register_cmd("colliders", (args: .. Any) { debug_colliders = !debug_colliders; });
+		register_cmd("gas", (args: .. Any) {  enable_collisions = !enable_collisions; });
+	}	
 }
 
 // game.ini settings
+//@TODO move to engine.jai, generalize this to be a .ini for the plugin
 set_configs :: (filename : string) {
 	path := tprint("config/%.ini", filename);
 	buffer, success := read_entire_file(path);

@@ -106,6 +106,8 @@ TextureID :: enum s64 {
 
 	DropZone;
 
+	Sign;
+
 	COUNT;
 }
 
@@ -142,7 +144,9 @@ init_textures :: () {
 	//load(.Tile_01, 		"tile_water_01.png");
 	load(.Tile_Magma, 	"tile_magma/tile_magma.png");
 
-	load(.DropZone, 	"dropzone/dropzone.png");
+	load(.DropZone, 	"dropzone/dropzone2.png");
+
+	load(.Sign, 	"sign/sign.png");
 }
 
 textures : [TextureID.COUNT] TextureAsset;
@@ -173,6 +177,9 @@ init_sprites :: () {
 	sprites[TextureID.LockBig] 	= init_sprite(.LockBig, frames=4, layer=-50, frame_size=.{64,64});
 
 	sprites[TextureID.DropZone] = init_sprite(.DropZone, layer=-100);
+
+
+	sprites[TextureID.Sign] = init_sprite(.Sign);
 
 
 	sprites[TextureID.Bug] 		= init_sprite(.Bug, frames=4, play_length=0.25);

@@ -279,7 +279,9 @@ draw_box :: (box : BoxFloat, color : Vector4, thickness := 2.) {
 }
 
 // mostly copied from GetRect/color_picker.jai, draw_hsv_circle()
-draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : float = 0, color : Vector4) {
+draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : float = 0, color : Vector4,
+		percent_begin := 0.) 
+{
 	set_shader_for_color(true);
 	
 	NUM_SEGMENTS :: 16;
@@ -288,14 +290,15 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
 	for i: 0..NUM_SEGMENTS - 1 {
         t := i / cast(float)(NUM_SEGMENTS - 1);
 
-        radians := TAU * t;
-        degrees: = 360.0 * t;
+        // start from 12 oclock
+        radians := TAU * (t+.25);
         dir := Vector2.{cos(radians), sin(radians)};
 
         p0 := center_window + dir * radius_outer;
         p1 := center_window + dir * radius_inner;
 
-        if (i != 0) {
+        // omit percentage of the circle
+        if (i != 0 && t > percent_begin) {
         	immediate_triangle(to_vec3(last_p0), to_vec3(last_p1), to_vec3(p1), color, color, color);
             immediate_triangle(to_vec3(last_p0), to_vec3(p1), to_vec3(p0), color, color, color);
         }
