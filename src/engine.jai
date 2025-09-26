@@ -284,7 +284,8 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
 		percent_begin := 0.) 
 {
 	set_shader_for_color(true);
-	NUM_SEGMENTS :: 16;
+	//NUM_SEGMENTS :: 16; @CLEAN temp while we debug
+	NUM_SEGMENTS :: 80;
 	last_p0, last_p1: Vector2 = ---;
 
 	for i: 0..NUM_SEGMENTS - 1 {
@@ -308,14 +309,16 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
     }
 }
 
-draw_collider :: (window_pos : Vector2, collider : *Collider) {
-	if collider.type == .Inactive return;
+draw_collider :: (collider : *Collider, window_pos : Vector2, win_radius : float) {
+	//if collider.type == .Inactive return; @CLEAN
 
-	r := collider.size.x*2.;
+	r := win_radius;
+	//r := collider.size.x*2.; @CLEAN
 	c := BLUE;
 	if collider.type == {
 		case .Dynamic; c = MAGENTA;
 		case .Trigger; c = YELLOW;
+		case .Inactive; c= WHITE;
 	}
 	if !collider.enabled c = RED;
 	draw_circle(window_pos, radius_outer=r, radius_inner=r-2, color=c);
@@ -406,8 +409,8 @@ is_in_circle :: (pos : Vector2, circle_center : Vector2, radius : float) -> bool
 }
 
 is_overlap_circle :: (c0 : Vector2, r0 : float, c1 : Vector2, r1 : float) -> bool {
-	dist2 := distance_squared(c0, c1);
-	return dist2 < (r0*r0 + r1*r1);
+	dist := distance(c0, c1);
+	return dist < (r0 + r1);
 }
 
 //@TODO

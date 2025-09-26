@@ -2,7 +2,7 @@
 
 Idea: Recusive level warping
 Inspirations: Coccoon | Patrick's Parabox | Inception | Antichamber | Sokaban heros (thekla)
-	Talos Principle | Zelda: LTTP
+	Talos Principle | Zelda: LTTP | Animal Well
 
 
 26 Sept 2025
@@ -93,7 +93,7 @@ game_begin :: () {
 		}
 	}
 
-	play_sound(.RoundBegin);
+	//play_sound(.RoundBegin);
 	print("\tInitial world activation: %\n", active_world.name);
 }
 
@@ -245,8 +245,6 @@ physics_tick :: (using world : *World, dt : float) {
 			if a.body.asleep continue;
 			if a.body.type != .Dynamic continue; 
 
-			//@TODO factor in focused partition range (cells around Hero)
-
 			for j : actors_head..actors_tail {
 				b := *actors[j];
 				if !is_valid(b) continue;
@@ -260,18 +258,19 @@ physics_tick :: (using world : *World, dt : float) {
 					ar := a.body.size.x;
 					bpos := b.position;
 					br := b.body.size.x;
-					dv := normalize(apos-bpos);
-					dv *= ar + br - distance(apos, bpos); //overlap depth
+					dv := normalize(bpos-apos);
+					dist := distance(apos, bpos);
+					diff := ar + br - dist; //overlap depth
 
 					//@TODO distribute this move based on size/mass
 					if b.body.type == {
 						case .Dynamic; {
-							a.position += dv/2;
-							b.position -= dv/2;
+							a.position -= dv*diff/2.;
+							b.position += dv*diff/2.;
 						}
 						case .Static; #through;
 						case .Kinematic; {
-							a.position += dv;
+							a.position -= dv*diff;
 						}
 					}
 
@@ -392,8 +391,10 @@ game_render :: (dt : float) {
 			if !is_valid(a) continue;
 
 			p := vec_world_to_window(a.position, a.world);
-			draw_collider(p, *a.body);
-			draw_collider(p, *a.interact_collider);
+			rb := scalar_to_window(a.body.size.x);
+			draw_collider(*a.body, p, rb);
+			ri := scalar_to_window(a.interact_collider.size.x);
+			draw_collider(*a.interact_collider, p, ri);
 		}
 	}
 }
@@ -698,8 +699,6 @@ world_tick_pure :: (using world : *World, dt : float) {
 		return;
 	}
 
-	physics_tick(world, dt);
-
 	// actors
     for i : actors_head..actors_tail {
 		a := *actors[i];
@@ -707,6 +706,8 @@ world_tick_pure :: (using world : *World, dt : float) {
 
     	if a.proc_tick_pure a.proc_tick_pure(a, dt);
     }
+
+	physics_tick(world, dt);
 }
 
 //@TODO is there a way we could schedule an arbitrary tick func? like a Task (struct)
@@ -910,16 +911,6 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 		render_sprite(*a.sprite, pos, nscale);
 
 		if a.proc_render a.proc_render(a, n, window_clip, pos);
-
-		//@CLEAN
-		//if has_flag(a, .InteractTarget) {
-		//	
-		//	//draw_text(hud_font, xx pos.x, xx pos.y, "[Q] Interact", G_WHITE);
-//
-		//	w := prepare_text(hud_font, "[Q] Interact");
-		//	posi := Vector2.{pos.x-w/2., pos.y};
-		//	draw_prepared_text(hud_font, xx posi.x, xx posi.y, G_WHITE);
-		//}
 	}
 
 	// draw window_clip border 
@@ -1371,17 +1362,7 @@ init_actor :: (world : *World) -> *Actor{
 	return a;
 }
 
-//@CLEAN
-//@TODO why do we have both deinit_actor and destroy??? it should be one path
-//deinit_actor :: (a : *Actor) {
-//	a.type = .EMPTY;
-//	a.flags = 0;
-//	string_reset(*a.payload);
-//}
-
 actor_free :: (a : *Actor) {
-	//deinit_actor(a); @CLEAN
-
 	a.type = .EMPTY;
 	a.flags = 0;
 	string_reset(*a.payload);
@@ -1443,6 +1424,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .WorldEntrance; {
 			a.flags |= .Interactable | .Pickupable;
 			a.body.type = .Kinematic;
+
+			//@TODO update this to 64x64
 			a.body.size = .{SUBCLIP_SIZE_DEFAULT/4.,SUBCLIP_SIZE_DEFAULT/4.};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
@@ -1456,7 +1439,6 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
 				world_transition_begin(interactor, a.child_world);
-				//world_enter_begin(interactor, a.child_world); @CLEAN
 			}
 
 			//@TODO warp on collision, needs to work given that everything warps back right away
@@ -1479,7 +1461,6 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
 				world_transition_begin(interactor);
-				//world_exit_begin(interactor); @CLEAN
 			}
 		}
 
@@ -1685,7 +1666,6 @@ player_tick_pure :: (a : *Actor, dt : float) {
 		if !is_in_partition_range(a, b) continue;
 
 		if is_overlap(a.position, *a.interact_collider, b.position, *b.body) {
-			//interact(b, a); @CLEAN
 			interact_target = b;
 			interact_target.flags |= .InteractTarget;
 			break;
@@ -1698,7 +1678,6 @@ player_tick_pure :: (a : *Actor, dt : float) {
 }
 
 console_tick :: (actor : *Actor, dt : float) {
-	//play_sound(.Pause);
 }
 
 console_interact_a :: (a : *Actor, interactor : *Actor) {
