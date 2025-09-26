@@ -22,7 +22,7 @@ GRID_SIZE :: 32.;
 grid_cell_size := GRID_SIZE;
 cursor_size := 1;
 cursor_snap_to_grid := true;
-cursor_box := BoxFloat.{0,0, GRID_SIZE/2., GRID_SIZE/2.};
+cursor_box := Box.{0,0, GRID_SIZE/2., GRID_SIZE/2.};
 
 // UI 
 subwindow_info_level 	: Subwindow_Info;
@@ -388,7 +388,7 @@ editor_spawner_add :: (spawner : ActorSpawner) {
 	dirty = true;
 }
 
-editor_spawner_delete :: (space : BoxFloat) {
+editor_spawner_delete :: (space : Box) {
 	for < editor_level.spawners {
 		spawner := it;
 		if is_in_box(spawner.position, space) {
@@ -400,7 +400,7 @@ editor_spawner_delete :: (space : BoxFloat) {
 	dirty = true;
 }
 
-is_occupied :: (space : BoxFloat) -> bool{
+is_occupied :: (space : Box) -> bool{
 	for editor_level.spawners {
 		if is_in_box(it.position, space) {
 			return true;
@@ -586,7 +586,7 @@ tool_selection :: EditorTool.{
 };
 
 selected_spawner_idxs : [..] s64;
-selection_box : BoxFloat;
+selection_box : Box;
 selection_start : Vector2;
 selection_end : Vector2;
 
@@ -604,7 +604,7 @@ has_selection :: () -> bool {
 
 clear_selection :: () {
 	array_reset(*selected_spawner_idxs);
-	selection_box = BoxFloat.{};
+	selection_box = Box.{};
 }
 
 tool_tick_selection :: (t : *EditorTool, dt : float) {
@@ -647,7 +647,7 @@ tool_tick_selection :: (t : *EditorTool, dt : float) {
 				}
 			}
 		}
-		selection_box = BoxFloat.{};
+		selection_box = Box.{};
 	}
 
 	if is_input_pressed(.DELETE) {

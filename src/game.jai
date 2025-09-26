@@ -4,6 +4,26 @@ Idea: Recusive level warping
 Inspirations: Coccoon | Patrick's Parabox | Inception | Antichamber | Sokaban heros (thekla)
 	Talos Principle | Zelda: LTTP
 
+
+26 Sept 2025
+Confirmed POC prototype v0.1
+Some fun ideas in a tightly designed package, plenty to explore.
+Need more robust engine tech.
+	- Asset Manager (textures, sprites, sfx, fonts)
+	- UI, layouts (vertical, horizontal, grid)
+	- square colliders, improve physics jank
+		HOWEVER, physics jank was fun in initial v0.1 playtests
+	- shaders
+
+Gameplay Engine Tech Ideas
+	- fluid sims
+	- lighting / lasers
+	- gravity (maybe tie into the fluid sims, ex black hole sucking up smoke/water)
+	- audio visualization, maybe more than just visual?
+
+Need to do an Aethetic prototype.
+
+
 14 Sept 2025 from Moonbase420
 // Dear maintainer: // 
 // Once you are done trying to 'optimize' this routine, 
@@ -43,8 +63,6 @@ game_deinit :: () {
 game_begin :: () {
 	print("~~ Game Begin ~~\n");
 	game_paused = false;
-	active_sign.enabled = false;
-	actor_id = 0;
 
 	//@TODO could move to generic engine.init(), reset flow would change a little for hot reload
 	set_configs("game");
@@ -52,6 +70,7 @@ game_begin :: () {
 	assert(is_valid(level_start));
 
 	// initialize from the root world
+	actor_id = 0;
 	root_world := world_init(level_root);
 	assert(root_world != null);
 	for * worlds {
@@ -86,6 +105,8 @@ game_end :: () {
 		world_deinit(*it);
 	}
 	active_world = null;
+
+	active_sign.enabled = false;
 }
 
 game_restart :: () {
@@ -111,14 +132,6 @@ game_tick :: (dt : float) {
 		if is_input_pressed(81) sign_hide(); //Q to hide
 		return;
 	}
-
-	//@CLEAN
-	// clear interaction flags because of same frame interactions
-	//@TODO this really could be solved by having a ConsumeInput type of data
-	//for * active_world.actors {
-	//	if !is_valid(it) continue;
-	//	it.flags &= ~.InteractCooldown;
-	//}
 
 	//@TODO clearing InteractTarget at the begining of the frame because we don't have
 	// an on_overlap_end type of callback yet
@@ -154,11 +167,13 @@ enable_collisions := true;
 debug_colliders := false;
 
 
+//@TODO could move to engine.jai
 is_in_partition_range :: (a0 : *Actor, a1 : *Actor) -> bool {
 	return abs(a0.partition_cell_x - a1.partition_cell_x) <= PARTITION_RANGE 
-		&& abs(a0.partition_cell_y - a1.partition_cell_y) <= PARTITION_RANGE ;
+		&& abs(a0.partition_cell_y - a1.partition_cell_y) <= PARTITION_RANGE;
 }
 
+//@TODO could move to engine.jai
 get_partition_pos :: (cell_x : s64, cell_y : s64) -> Vector2 {
 	return .{ 
 		PARTITION_CELL_SIZE * (xx cell_x + 0.5), 
@@ -166,6 +181,7 @@ get_partition_pos :: (cell_x : s64, cell_y : s64) -> Vector2 {
 	};
 }
 
+//@TODO could move to engine.jai
 get_partition_index_from_world_pos :: (pos : float) -> s64 {
 	return xx (pos / PARTITION_CELL_SIZE);
 }
@@ -269,8 +285,8 @@ physics_tick :: (using world : *World, dt : float) {
 
 game_render :: (dt : float) {
 	{ // Parent World
-		pos := Vector2.{window_width/2., window_height/2.};
-		size := Vector2.{xx window_width, xx window_height};
+		pos := window_center;
+		size := window_size;
 		if active_world.parent == null {
 			draw_square(pos, size, G_BLACK);
 		}
@@ -278,7 +294,7 @@ game_render :: (dt : float) {
 			nests := -1.;
 			//n := -1;
 			//nests := ifx enter then n-active_world.transition_progress else n+active_world.transition_progress;
-			clip := BoxFloat.{pos.x, pos.y, size.x, size.y};
+			clip := Box.{pos.x, pos.y, size.x, size.y};
 			enter := active_world.transition_enter;
 			world_render(active_world.parent, nests, clip, pos, false);
 		}
@@ -300,8 +316,7 @@ game_render :: (dt : float) {
 			sizey = lerp(clip_size_y, sc, dt);
 		}
 
-		clip := BoxFloat.{window_width/2., window_height/2., sizex, sizey};
-		//clip := BoxFloat.{window_width/2., window_height/2., xx window_width, xx window_height};
+		clip := Box.{window_center.x, window_center.y, sizex, sizey};
 
 		pos_in_window := Vector2.{0,0};
 		world_render(active_world, 0, clip, pos_in_window);
@@ -323,8 +338,24 @@ game_render :: (dt : float) {
 
 			o := offset_index * offset;
 			pos := Vector2.{(xx window_width)-100., (xx window_height)-(100.+o)};
-			render_clock(a, 0, BoxFloat.{}, pos);
+			render_clock(a, 0, Box.{}, pos);
 			offset_index += 1;
+
+			seconds := a.lifetime - a.lifetime_dt;
+			//@TODO multiply by current depth
+			seconds *= 1/get_nest_time(a.depth);
+			{
+				text := tprint("% (s)", formatFloat(seconds, trailing_width=1));
+				width := prepare_text(hud_font, text);
+				pos.y -= 56.;
+		    	draw_prepared_text(hud_font, xx(pos.x-width/2.), xx pos.y, G_WHITE);
+			}
+			{
+				text := tprint("depth=%",cast(s64)a.depth);
+				width := prepare_text(hud_font, text);
+				pos.y -= hud_font.character_height;
+		    	draw_prepared_text(hud_font, xx(pos.x-width/2.), xx pos.y, G_WHITE);
+			}
 		}
 	}	
 	
@@ -761,6 +792,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 		
 		sprite_tick(*a.sprite, dt);
     	
+    	a.depth = nests;
     	a.lifetime_dt += dt;
 		if a.lifetime > 0 && a.lifetime_dt >= a.lifetime {
 			if a.proc_onlifetime_expired
@@ -837,7 +869,7 @@ get_world_color :: (world : *World) -> Vector4 {
 	return get_nest_color(world.depth);
 }
 
-world_render :: (using world : *World, nests : float, window_clip : BoxFloat, pos_in_window : Vector2, should_render_subworlds := true) {
+world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_window : Vector2, should_render_subworlds := true) {
 	assert(is_valid(world), "%", world.name);
 
 	{ // scissor clip for this world, cleared before next recursive call
@@ -936,7 +968,7 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		draw_box(outline, color, thickness);
 
 		// time marker, white box on outline
-		draw_dot :: (outline : BoxFloat, world : *World, nests : float, nscale : Vector2, offset := 0.) {
+		draw_dot :: (outline : Box, world : *World, nests : float, nscale : Vector2, offset := 0.) {
 			progress := fmod_cycling(world.age,WORLD_TIME_PER_CYCLE) / WORLD_TIME_PER_CYCLE;
 			progress -= offset;
 			p := get_box_percent_pos(*outline, progress);
@@ -990,10 +1022,10 @@ world_render :: (using world : *World, nests : float, window_clip : BoxFloat, po
 		array_reset(*sorted_actors);
 }
 
-subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_window : Vector2) {
+subworld_render := (a : *Actor, nests : float, window_clip : Box, pos_in_window : Vector2) {
 	// find new clipping box, subdividing our current window_clip
 	nscale := get_nest_scale(nests);
-	subclip : BoxFloat;
+	subclip : Box;
 	subclip.x = pos_in_window.x;
 	subclip.y = pos_in_window.y;
 
@@ -1031,7 +1063,7 @@ subworld_render := (a : *Actor, nests : float, window_clip : BoxFloat, pos_in_wi
 
 // get the position around the edge of the box given a percent
 // start in bottom left, progress clockwise
-get_box_percent_pos :: (box : *BoxFloat, percent : float) -> Vector2{
+get_box_percent_pos :: (box : *Box, percent : float) -> Vector2{
 	percent = clamp(percent, 0., 1.);
 	result : Vector2;
 	x := box.x;
@@ -1195,6 +1227,7 @@ Actor :: struct {
 	world : *World;
 	child_world : *World;
 	payload : string;
+	depth : float = 0.; // current depth this actor is ticking at
 
 	proc_begin : ActorProc;
 	proc_tick : ActorProc_Tick;
@@ -1277,7 +1310,6 @@ ActorFlags :: enum_flags s64 {
 	Interactable	:: 1<<20;
 	BlockInteract	:: 1<<21;
 	InteractTarget	:: 1<<22;
-	//InteractCooldown :: 1<<22; @CLEAN
 
 	LockA 			:: 1<<23;
 	UnlocksA 		:: 1<<24;
@@ -1325,7 +1357,7 @@ get_actor_sprite :: (type : ActorType) -> *Sprite {
 
 ActorProc :: #type (actor : *Actor);
 ActorProc_Tick :: #type (actor : *Actor, dt : float);
-ActorProc_Render :: #type (actor : *Actor, nests : float, clip : BoxFloat, pos_in_window : Vector2);
+ActorProc_Render :: #type (actor : *Actor, nests : float, clip : Box, pos_in_window : Vector2);
 ActorProc_Overlap :: #type (a0 : *Actor, a1 : *Actor);
 
 is_valid :: (actor : *Actor) -> bool{
@@ -1738,7 +1770,7 @@ console_deinteract :: (a : *Actor) {
 	play_sound(.Pause);
 }
 
-render_clock :: (a : *Actor, nests : float, clip : BoxFloat, pos_in_window : Vector2) {
+render_clock :: (a : *Actor, nests : float, clip : Box, pos_in_window : Vector2) {
 	progress := ifx a.lifetime > 0 then  a.lifetime_dt / a.lifetime else 0.;
 
 	// timer draw circle

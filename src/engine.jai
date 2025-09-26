@@ -4,6 +4,8 @@
 window : Window_Type;
 window_width := 0;
 window_height := 0;
+window_center : Vector2;
+window_size : Vector2;
 window_aspect := 1.0;
 window_quit := false;
 
@@ -189,8 +191,6 @@ engine_init :: (cfg : EngineConfig) {
 	    input_mod_alt = is_input_down(.ALT);
 	    input_mod_shift = is_input_down(.SHIFT);
 
-	    //@TODO should we move this out of the main loop?
-	    //@TODO build define out in RELEASE builds
 		if is_input_pressed(96 /*`*/)  	{ 
 			terminal_enabled = !terminal_enabled;
 			terminal_id += 1;
@@ -240,7 +240,6 @@ set_plugin :: (plugin : string) {
 	active_plugin.proc_init();
 }
 
-//@TODO put the terminal_enabled block here?
 is_input_pressed :: (key : Key_Code) -> bool {
 	return input_button_states[key] & .START != 0;
 }
@@ -257,6 +256,8 @@ resize_viewport :: () {
 	if !window_height return;
 
 	window_aspect = window_width / cast(float)window_height;
+	window_center = Vector2.{window_width/2., window_height/2.};
+	window_size = Vector2.{xx window_width, xx window_height};
 }
 
 draw_square :: (pos_window : Vector2, size : Vector2, color : Vector4) {
@@ -270,7 +271,7 @@ draw_square :: (pos_window : Vector2, size : Vector2, color : Vector4) {
     immediate_quad(p0, p1, p2, p3, color);
 }
 
-draw_box :: (box : BoxFloat, color : Vector4, thickness := 2.) {
+draw_box :: (box : Box, color : Vector4, thickness := 2.) {
 	t := thickness;
 	draw_square(.{box.x + box.w/2, box.y}, .{t, box.h}, color);
 	draw_square(.{box.x - box.w/2, box.y}, .{t, box.h}, color);
@@ -283,7 +284,6 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
 		percent_begin := 0.) 
 {
 	set_shader_for_color(true);
-	
 	NUM_SEGMENTS :: 16;
 	last_p0, last_p1: Vector2 = ---;
 
@@ -324,7 +324,7 @@ draw_collider :: (window_pos : Vector2, collider : *Collider) {
 
 // ~~~~~~~ Collision / Util ~~~~~~~ 
 
-BoxFloat :: struct {
+Box :: struct {
 	x : float = 0;
 	y : float = 0;
 	w : float = 0;
@@ -358,13 +358,12 @@ ColliderType :: enum u8 {
 
 ColliderShape :: enum u8 {
 	Circle;
-	//Square @TODO
+	AABB; //@TODO
 }
 
-ColliderMask :: enum_flags u32 {
+ColliderMask :: enum_flags u8 {
 	Pawn;
 	Wall;
-	Item;
 	Hero;
 }
 
@@ -378,31 +377,55 @@ collider_reset :: (c : *Collider) {
 	c.collides_with = 0;
 }
 
-is_in_circle :: (pos : Vector2, circle_center : Vector2, radius : float) -> bool {
-	dist2 := distance_squared(pos, circle_center);
-	return dist2 < (radius*radius);
-}
-
-is_circle_overlap :: (c0 : Vector2, r0 : float, c1 : Vector2, r1 : float) -> bool {
-	dist2 := distance_squared(c0, c1);
-	return dist2 < (r0*r0 + r1*r1);
-}
-
-//@TODO account for multiple shapes
 is_overlap :: (apos : Vector2, a : *Collider, bpos : Vector2, b : *Collider) -> bool{
 	if !b.enabled return false;
 	if b.type == .Inactive return false;
 	if a.is_a & b.collides_with == 0 return false;
 
-	return is_circle_overlap(apos, a.size.x, bpos, b.size.x);
+	if a.shape == .Circle && b.shape == .Circle {
+		return is_overlap_circle(apos, a.size.x, bpos, b.size.x);
+	}
+
+	if a.shape == .AABB && b.shape == .AABB {
+		//@TODO
+		//return is_overlap_aabb();
+	}
+
+	if a.shape == .Circle && b.shape == .AABB || a.shape == .AABB && b.shape == .Circle{
+		//@TODO
+		//return is_overlap_circle_aabb();
+	}
+
+	assert(false, "Unsupported combo, a=% b=%", a.shape, b.shape);
+	return false;
 }
 
-is_in_box :: (pos : Vector2, box : BoxFloat) -> bool {
+is_in_circle :: (pos : Vector2, circle_center : Vector2, radius : float) -> bool {
+	dist2 := distance_squared(pos, circle_center);
+	return dist2 < (radius*radius);
+}
+
+is_overlap_circle :: (c0 : Vector2, r0 : float, c1 : Vector2, r1 : float) -> bool {
+	dist2 := distance_squared(c0, c1);
+	return dist2 < (r0*r0 + r1*r1);
+}
+
+//@TODO
+is_overlap_aabb :: (box0 : AABB, box1 : AABB) -> bool {
+	return false;
+}
+
+//@TODO
+is_overlap_circle_aabb :: (c0 : Vector2, r0 : float, box1 : AABB) -> bool {
+	return false;
+}
+
+is_in_box :: (pos : Vector2, box : Box) -> bool {
 	return pos.x > box.x-box.w/2. && pos.x < box.x+box.w/2.
 		&& pos.y > box.y-box.h/2. && pos.y < box.y+box.h/2.;
 }
 
-get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {
+get_box_intersection :: (a : Box, b : Box) -> bool, Box {
 	xmin := max(a.x-a.w/2., b.x-b.w/2.);
 	xmax := min(a.x+a.w/2., b.x+b.w/2.);
 	ymin := max(a.y-a.h/2., b.y-b.h/2.);
@@ -411,14 +434,14 @@ get_box_intersection :: (a : BoxFloat, b : BoxFloat) -> bool, BoxFloat {
 	if xmin < xmax && ymin < ymax {
 		w := xmax-xmin;
 		h := ymax-ymin;
-		return true, BoxFloat.{xmin+w/2., ymin+h/2., w, h};
+		return true, Box.{xmin+w/2., ymin+h/2., w, h};
 	}
-	return false, BoxFloat.{};
+	return false, Box.{};
 }
 
 //@TODO
-/*to_box :: (aabb : *AABB) -> BoxFloat {
-	result := BoxFloat.{};
+/*to_box :: (aabb : *AABB) -> Box {
+	result := Box.{};
 	dx:= distance(aabb.upper.x, aabb.lower.x);
 	result.x = aabb.upper.x - aabb.lower.x
 	return .{
@@ -519,7 +542,7 @@ Sprite :: struct {
 
 SpriteFrame :: struct {
 	index := 0;
-	coords : BoxFloat;
+	coords : Box;
 	play_length : float = 0;
 	play_start : float = 0;
 }
@@ -543,7 +566,7 @@ init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32},
 	for 0..frames-1 {
 		frame := SpriteFrame.{
 			index = it,
-			coords = BoxFloat.{x=frame_size.x*it, y=0, w=frame_size.x, h=frame_size.y},
+			coords = Box.{x=frame_size.x*it, y=0, w=frame_size.x, h=frame_size.y},
 			play_length = play_length / frames,
 			play_start = sprite.play_length,
 		};
@@ -829,7 +852,6 @@ tick_emitter :: (emitter: *Particle_Emitter, dt: float) {
 engine_ui_init :: () {
 	// Necessary for GetRect
 	ui_init();
-
 	engine_ui_set_theme();
     engine_ui_resize();
 }
@@ -844,9 +866,6 @@ engine_ui_resize :: () {
 	hud_font_pixel_height = cast(s64)(window_height * hud_font_factor);
 	hud_font = get_font_at_size(asset_path, config.font, hud_font_pixel_height);
     assert(hud_font != null);
-}
-
-engine_ui_deinit :: () {
 }
 
 update_ui_hit :: (r : *Rect) {
