@@ -164,7 +164,7 @@ PARTITION_RANGE :: 1;
 
 pause_physics := false;
 enable_collisions := true;
-debug_colliders := false;
+debug_colliders := true;
 
 
 //@TODO could move to engine.jai
@@ -252,25 +252,60 @@ physics_tick :: (using world : *World, dt : float) {
 				if !is_in_partition_range(a,b) continue;
 
 				// a is overlapping b, resolve collision, move a out of b
+				//@OPTIMIZE tons of duplicated math, refactor for ez speed gains
+				// There's a lot that can be refactored down in to is_overlap(..)
 				if is_overlap(a.position, *a.body, b.position, *b.body) {
-					//@TODO we're doing this math twice
 					apos := a.position;
-					ar := a.body.size.x;
 					bpos := b.position;
-					br := b.body.size.x;
-					dv := normalize(bpos-apos);
+					dir := normalize(bpos-apos);
 					dist := distance(apos, bpos);
-					diff := ar + br - dist; //overlap depth
 
-					//@TODO distribute this move based on size/mass
-					if b.body.type == {
-						case .Dynamic; {
-							a.position -= dv*diff/2.;
-							b.position += dv*diff/2.;
+					//@OPTIMIMZE move this into is_overlap(..)
+					if b.body.shape== {
+						case .Circle; {
+							diff := a.body.size.x + b.body.size.x - dist; //overlap depth
+							dv := dir*diff;
+
+							if b.body.type == {
+								case .Dynamic; {
+									a.position -= dv/2.;
+									b.position += dv/2.;
+								}
+								case .Static; #through;
+								case .Kinematic; {
+									a.position -= dv;
+								}
+							}
 						}
-						case .Static; #through;
-						case .Kinematic; {
-							a.position -= dv*diff;
+						case .Box; {
+							assert(b.body.type != .Dynamic); //@TODO side stepping this case for now
+							//edge_x := clamp(apos.x, bpos.x-b.body.size.x/2., bpos.x+b.body.size.x/2.);
+							//edge_y := clamp(apos.y, bpos.y-b.body.size.y/2., bpos.y+b.body.size.y/2.);
+							//dx := apos.x - edge_x; //@CLEAN
+							
+
+							//dy := apos.y - edge_y;
+							//if apos.x > bpos.x-b.body.size.x/2. {
+							//	a.position.x = bpos.x-b.body.size.x/2. - a.body.size.x;
+							//}
+							//if apos.x < bpos.x+b.body.size.x/2. {
+							//	a.position.x = bpos.x-b.body.size.x/2. - a.body.size.x;
+							//}
+
+							//@TODO temp
+							diff := a.body.size.x + b.body.size.x - dist; //overlap depth
+							dv := dir*diff;
+							if b.body.type == {
+								//case .Dynamic; {
+								//	a.position -= dv/2.;
+								//	b.position += dv/2.;
+								//}
+								case .Static; #through;
+								case .Kinematic; {
+									a.position -= dv;
+								}
+							}
+							
 						}
 					}
 
@@ -390,11 +425,14 @@ game_render :: (dt : float) {
 		for *a : active_world.actors {
 			if !is_valid(a) continue;
 
+			// main body
 			p := vec_world_to_window(a.position, a.world);
-			rb := scalar_to_window(a.body.size.x);
-			draw_collider(*a.body, p, rb);
-			ri := scalar_to_window(a.interact_collider.size.x);
-			draw_collider(*a.interact_collider, p, ri);
+			size := Vector2.{scalar_to_window(a.body.size.x), scalar_to_window(a.body.size.y)};
+			draw_collider(*a.body, p, size);
+
+			// interact collider
+			sizei := Vector2.{scalar_to_window(a.interact_collider.size.x), scalar_to_window(a.interact_collider.size.y)};
+			draw_collider(*a.interact_collider, p, sizei);
 		}
 	}
 }
@@ -552,7 +590,7 @@ world_transition_begin :: (a : *Actor, world : *World = null) {
 	a.world.transition_actor = a;
 	a.world.transition_world = ifx enter then world else a.world.parent;
 	assert(a.world.transition_world != null);
-	assert(a.world.transition_world != a.world);
+	//assert(a.world.transition_world != a.world); @CLEAN
 
 	play_sound(.Warp);
 }
@@ -1424,9 +1462,9 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .WorldEntrance; {
 			a.flags |= .Interactable | .Pickupable;
 			a.body.type = .Kinematic;
-
-			//@TODO update this to 64x64
-			a.body.size = .{SUBCLIP_SIZE_DEFAULT/4.,SUBCLIP_SIZE_DEFAULT/4.};
+			//a.body.size = .{SUBCLIP_SIZE_DEFAULT/4.,SUBCLIP_SIZE_DEFAULT/4.}; @CLEAN
+			a.body.shape = .Box;
+			a.body.size = .{64,64};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 			a.weight = 1;
@@ -1466,7 +1504,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 		case .Block; {
 			a.body.type = .Static;
-			a.body.size = .{16,16};
+			a.body.shape = .Box;
+			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn | .Wall;
 		}
@@ -1474,7 +1513,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .Console; {
 			a.flags |= .Interactable | .UnlocksA;
 			a.body.type = .Static;
-			a.body.size = .{16,16};
+			a.body.shape = .Box;
+			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn | .Wall;
 
@@ -1504,7 +1544,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .WallLock; {
 			a.flags |= .LockA;
 			a.body.type = .Static;
-			a.body.size = .{16,16};
+			a.body.shape = .Box;
+			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn | .Wall;
 
@@ -1518,7 +1559,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 		case .DropZone; {
 			a.body.type = .Trigger;
-			a.body.size = .{16,16};
+			a.body.shape = .Box;
+			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn;
 
@@ -1533,7 +1575,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .WallLockBig; {
 			a.flags |= .LockBig;
 			a.body.type = .Static;
-			a.body.size = .{32,32};
+			a.body.shape = .Box;
+			a.body.size = .{64,64};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn | .Wall;
 			sprite_pause(*a.sprite);
@@ -1567,7 +1610,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .Sign; {
 			a.flags |= .Interactable;
 			a.body.type = .Trigger;
-			a.body.size = .{16,16};
+			a.body.shape = .Box;
+			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Hero;
 
@@ -1672,7 +1716,7 @@ player_tick_pure :: (a : *Actor, dt : float) {
 		}
 	}
 
-	if is_input_pressed(81) && interact_target != null { //Q
+	if is_input_pressed(81, true) && interact_target != null { //Q
 		interact(interact_target, a);
 	}
 }

@@ -240,8 +240,14 @@ set_plugin :: (plugin : string) {
 	active_plugin.proc_init();
 }
 
-is_input_pressed :: (key : Key_Code) -> bool {
-	return input_button_states[key] & .START != 0;
+is_input_pressed :: (key : Key_Code, consume_input := false) -> bool {
+	result := input_button_states[key] & .START != 0;
+
+	if result && consume_input {
+		input_button_states[key] &= ~.START;
+	}
+
+	return result;
 }
 
 is_input_down :: (key : Key_Code) -> bool {
@@ -309,11 +315,7 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
     }
 }
 
-draw_collider :: (collider : *Collider, window_pos : Vector2, win_radius : float) {
-	//if collider.type == .Inactive return; @CLEAN
-
-	r := win_radius;
-	//r := collider.size.x*2.; @CLEAN
+draw_collider :: (collider : *Collider, window_pos : Vector2, win_size : Vector2) {
 	c := BLUE;
 	if collider.type == {
 		case .Dynamic; c = MAGENTA;
@@ -321,7 +323,18 @@ draw_collider :: (collider : *Collider, window_pos : Vector2, win_radius : float
 		case .Inactive; c= WHITE;
 	}
 	if !collider.enabled c = RED;
-	draw_circle(window_pos, radius_outer=r, radius_inner=r-2, color=c);
+
+	p := window_pos;
+	if collider.shape== {
+		case .Circle; {
+			r := win_size.x;
+			draw_circle(p, radius_outer=r, radius_inner=r-2, color=c);
+		}
+		case .Box; {
+			box := Box.{p.x, p.y, win_size.x, win_size.y};
+			draw_box(box, c);
+		}
+	}
 }
 
 
@@ -361,7 +374,7 @@ ColliderType :: enum u8 {
 
 ColliderShape :: enum u8 {
 	Circle;
-	AABB; //@TODO
+	Box; //@TODO
 }
 
 ColliderMask :: enum_flags u8 {
@@ -389,14 +402,16 @@ is_overlap :: (apos : Vector2, a : *Collider, bpos : Vector2, b : *Collider) -> 
 		return is_overlap_circle(apos, a.size.x, bpos, b.size.x);
 	}
 
-	if a.shape == .AABB && b.shape == .AABB {
+	if a.shape == .Box && b.shape == .Box {
 		//@TODO
 		//return is_overlap_aabb();
 	}
 
-	if a.shape == .Circle && b.shape == .AABB || a.shape == .AABB && b.shape == .Circle{
-		//@TODO
-		//return is_overlap_circle_aabb();
+	if a.shape == .Circle && b.shape == .Box {
+		return is_overlap_circle_box(apos, a.size.x, bpos, b.size);
+	}
+	if b.shape == .Circle && a.shape == .Box {
+		return is_overlap_circle_box(bpos, b.size.x, apos, a.size);
 	}
 
 	assert(false, "Unsupported combo, a=% b=%", a.shape, b.shape);
@@ -418,9 +433,13 @@ is_overlap_aabb :: (box0 : AABB, box1 : AABB) -> bool {
 	return false;
 }
 
-//@TODO
-is_overlap_circle_aabb :: (c0 : Vector2, r0 : float, box1 : AABB) -> bool {
-	return false;
+is_overlap_circle_box :: (p0 : Vector2, r0 : float, p1 : Vector2, size1 : Vector2) -> bool{
+	edge_x := clamp(p0.x, p1.x-size1.x/2., p1.x+size1.x/2.);
+	edge_y := clamp(p0.y, p1.y-size1.y/2., p1.y+size1.y/2.);
+	dx := p0.x - edge_x;
+	dy := p0.y - edge_y;
+	dist2 := dx*dx + dy*dy;
+	return dist2 <= (r0*r0);
 }
 
 is_in_box :: (pos : Vector2, box : Box) -> bool {
