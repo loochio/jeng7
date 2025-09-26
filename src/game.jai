@@ -317,7 +317,6 @@ game_render :: (dt : float) {
 		}
 
 		clip := Box.{window_center.x, window_center.y, sizex, sizey};
-
 		pos_in_window := Vector2.{0,0};
 		world_render(active_world, 0, clip, pos_in_window);
 	}
@@ -359,7 +358,6 @@ game_render :: (dt : float) {
 		}
 	}	
 	
-
 
 	//@TODO UI Layout rendering
 
@@ -435,7 +433,7 @@ WorldTimeFlags :: enum_flags u8 {
 }
 
 
-MAX_WORLDS :: 8;
+MAX_WORLDS :: 32; // fun fact: 128 worlds adds 1.2 sec to our total compile time (compared to 8 worlds)
 worlds : [MAX_WORLDS] World;
 MAX_ACTORS_PER_WORLD :: 4096;
 actor_id := 0;
@@ -477,33 +475,14 @@ world_deinit :: (using world : *World) {
 	level_reset(*level);
 	flags = 0;
 
-	for * actors {
-		destroy(it);
-	}
+	for * actors actor_free(it);
 }
 
 world_begin :: (world : *World) {
 	assert(is_valid(world));
 	
 	// initial actor spawning
-	for * world.spawners {
-		a := spawn(world, it);
-		assert(a != null);
-	}
-
-	//@CLEAN we went a different direction with this idea
-	// link up any actors we need
-	///for *a : world.actors {
-	//	if !is_valid(a) continue;
-	//	if a.type == .Console || a.type == .ConsoleMovable{
-	//		for *b : world.actors {
-	//			if !is_valid(b) continue;
-	//			if b.type == .WallLock {
-	//				a.link = b.id;
-	//			}
-	//		}
-	//	}
-	//}
+	for * world.spawners spawn(world, it);
 }
 
 get_world :: (name : string) -> *World{
@@ -541,37 +520,58 @@ vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0.) -> Vec
 }
 
 set_active_world :: (actor : *Actor) {
-	assert(actor.flags & .Possessed != 0);
+	assert(has_flag(actor, .Possessed));
 	active_world = actor.world;
 	active_world.focus = actor;
 }
 
-world_enter_begin :: (a : *Actor, world : *World) {
-	// enter world immediately if not possessed
-	if a.flags & .Possessed == 0{
-		world_enter(a, world);
+// begin a transition to the specified world, pop to the actor.world.parent if no world provideds
+world_transition_begin :: (a : *Actor, world : *World = null) {
+	enter := world != null;
+
+	if !enter && a.world.parent == null {
+		//@TODO probably should setup a default parent world we always warp to
+		print("ERROR No parent world found\n");
 		return;
 	}
 
-	assert(a.flags & .Possessed != 0);
+	// enter world immediately if not possessed
+	if !has_flag(a, .Possessed) {
+		if enter {
+			world_enter(a, world);
+		}
+		else {
+			world_exit(a);
+		}
+		return;
+	}
+
+	a.world.transition_enter = enter;
 	a.world.transition_time = WORLD_TRANSITION_TIME;
 	a.world.transition_actor = a;
-	a.world.transition_world = world;
-	a.world.transition_enter = true;
+	a.world.transition_world = ifx enter then world else a.world.parent;
+	assert(a.world.transition_world != null);
+	assert(a.world.transition_world != a.world);
 
-	// update the parent world we're warping to
-	// There can be multiple parent worlds associated with this world.
-	world.parent = a.world;
 	play_sound(.Warp);
 }
 
-world_enter_end :: (world : *World) {
-	assert(world.transition_actor != null);
-	assert(world.transition_world != null);
-	assert(world.transition_enter);
-	world_enter(world.transition_actor, world.transition_world);
-	world.transition_actor = null;
-	world.transition_world = null;
+world_transition_end :: (using world : *World) {
+	assert(transition_progress >= 1., "%", transition_progress);
+	assert(transition_actor != null);
+	assert(transition_world != null);
+
+	transition_time = 0;
+	transition_progress = 0.;
+
+	if transition_enter {
+		world_enter(transition_actor, transition_world);
+	}
+	else {
+		world_exit(transition_actor);
+	}
+	transition_actor = null;
+	transition_world = null;
 }
 
 world_enter :: (a : *Actor, world : *World) {
@@ -594,47 +594,19 @@ world_enter :: (a : *Actor, world : *World) {
 	}
 }
 
-world_exit_begin :: (a : *Actor) {
-	//@TODO probably should setup a default parent world we always warp to
-	if a.world.parent == null {
-		print("ERROR No parent world found\n");
-		return;
-	}
-
-	// exit world immediately if not possessed
-	if a.flags & .Possessed == 0{
-		world_exit(a);
-		return;
-	}
-
-	a.world.transition_time = WORLD_TRANSITION_TIME;
-	a.world.transition_actor = a;
-	a.world.transition_enter = false;
-	a.world.transition_world = a.world.parent;
-	assert(a.world.parent != null);
-}
-
-world_exit_end :: (world : *World) {
-	assert(world.transition_actor != null);
-	assert(world.transition_world != null);
-	assert(!world.transition_enter);
-	world_exit(world.transition_actor);
-	world.transition_actor = null;
-	world.transition_world = null;
-}
-
 world_exit :: (a : *Actor) {
 	assert(a != null);
 	assert(a.world.parent != null);
 
 	// set the focus of this exiting world
-	for * a.world.actors { //@OPTIMIZE iterate on world.head/tail
-		if !is_valid(it) continue;
+	if has_flag(a, .Possessed) {
+		for * a.world.actors { //@OPTIMIZE iterate on world.head/tail
+			if !is_valid(it) continue;
 
-		// set our focus to the exit
-		if it.type == .WorldExit && a.flags & .Possessed {
-			a.world.focus = it;
-			break;
+			if it.type == .WorldExit {
+				a.world.focus = it;
+				break;
+			}
 		}
 	}
 
@@ -650,8 +622,12 @@ world_exit :: (a : *Actor) {
 	}
 
 	new_actor := move_actor_to_world(a, a.world.parent, pos);
+
+	//@OPTIMIZE this doesn't seem correct. looks like it only works for Possessed actors
+	// I guess we're only calling world_exit for Possessed actors
 	if new_actor {
 		assert(!is_valid(a));
+		assert(has_flag(new_actor, .Possessed));
 		set_active_world(new_actor);
 		play_sound(.Warp, pitch_min=.7, pitch_max=.7);
 	}
@@ -675,6 +651,7 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	assert(actor.world != world);
 	new_actor := init_actor(world);
 	memcpy(new_actor, actor, size_of(Actor));
+ 	defer actor_free(actor);
 
 	// we need to reset the world bc it gets overwritten with memcpy()
 	new_actor.world = world;
@@ -702,9 +679,7 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 		if !is_valid(w) continue;
 		w.timeflags &= ~.TimeInfinite;
 	}
-
-	// cleanup the old actor now that we're done with it
-	deinit_actor(actor);
+	
 	return new_actor;
 }
 
@@ -719,19 +694,7 @@ world_tick_pure :: (using world : *World, dt : float) {
 		transition_time -= dt;
 		transition_progress = 1. - (transition_time / WORLD_TRANSITION_TIME);
 
-		if transition_time <= 0 {
-			assert(transition_progress >= 1., "%", transition_progress);
-			transition_time = 0;
-			transition_progress = 0.;
-
-			//@TODO generalize to world_transition_end
-			if transition_enter {
-				world_enter_end(world);
-			}
-			else {
-				world_exit_end(world);
-			}
-		}
+		if transition_time <= 0 world_transition_end(world);
 		return;
 	}
 
@@ -800,7 +763,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 
 			if a.flags & .DestroyAfterLifetime {
 				print("LIFETIME EXPIRATION type=%\n", a.type);
-				destroy(a);
+				actor_free(a);
 			}
 		}
 
@@ -834,7 +797,7 @@ WORLD_NESTED_TIME :: 0.15;
 WORLD_TIME_PER_CYCLE :: 10.; // for the revolving outline marker
 WORLD_TRANSITION_TIME :: 0.25; 
 WORLD_TICK_NEST_MAX :: 10.;
-WORLD_RENDER_NEST_MAX :: 4.;
+WORLD_RENDER_NEST_MAX :: 4.; // max num of nested subworlds to render
 
 
 
@@ -1408,15 +1371,20 @@ init_actor :: (world : *World) -> *Actor{
 	return a;
 }
 
+//@CLEAN
 //@TODO why do we have both deinit_actor and destroy??? it should be one path
-deinit_actor :: (a : *Actor) {
+//deinit_actor :: (a : *Actor) {
+//	a.type = .EMPTY;
+//	a.flags = 0;
+//	string_reset(*a.payload);
+//}
+
+actor_free :: (a : *Actor) {
+	//deinit_actor(a); @CLEAN
+
 	a.type = .EMPTY;
 	a.flags = 0;
 	string_reset(*a.payload);
-}
-
-destroy :: (a : *Actor) {
-	deinit_actor(a);
 	collider_reset(*a.body);
 	collider_reset(*a.interact_collider);
 	array_reset_keeping_memory(*a.children);
@@ -1487,7 +1455,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.proc_render_subworld = subworld_render; 
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
-				world_enter_begin(interactor, a.child_world);
+				world_transition_begin(interactor, a.child_world);
+				//world_enter_begin(interactor, a.child_world); @CLEAN
 			}
 
 			//@TODO warp on collision, needs to work given that everything warps back right away
@@ -1509,7 +1478,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.world.focus_default = a;
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
-				world_exit_begin(interactor);
+				world_transition_begin(interactor);
+				//world_exit_begin(interactor); @CLEAN
 			}
 		}
 
@@ -1598,7 +1568,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 				assert(a0.type == .WallLockBig);
 				if a1.type == .Kid {
 					a0.counter -= 1;
-					destroy(a1);
+					actor_free(a1);
 					sprite_step(*a0.sprite);
 
 					if a0.counter <= 0 {
