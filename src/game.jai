@@ -1321,6 +1321,7 @@ ActorType :: enum s64 #specified {
 	WallLockBig		:: 3001; // big lock (gooblet)
 
 	DropZone 		:: 4000; // causes held items to drop
+	TimerResetA 	:: 4001; // reset all A timers (green circle)
 
 	Sign 			:: 10000;
 }
@@ -1360,6 +1361,8 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 		case .ConsoleMovable;	return TextureID.ButtonPickupA;
 		case .WallLock; 		return TextureID.LockA;
 		case .WallLockBig; 		return TextureID.LockBig;
+		case .TimerResetA; 		return TextureID.TimerResetA;
+
 
 		case .DropZone; 		return TextureID.DropZone;
 
@@ -1469,7 +1472,6 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 	a := actor_alloc(world, spawner.type);
-	//a.type = spawner.type; @CLEAN
 	assert(is_valid(a));
 	a.sprite = get_actor_sprite(a.type);
 	a.position = spawner.position;
@@ -1624,6 +1626,33 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 					item_drop(a1);
 					play_sound(.Death, vol_min=0.5, vol_max=0.6, pitch_min=0.95, pitch_max=1.1);
 				}
+			}
+		}
+
+		case .TimerResetA; {
+			a.body.type = .Trigger;
+			a.body.shape = .Box;
+			a.body.size = .{32,32};
+			a.body.is_a = .Wall;
+			a.body.collides_with = .Pawn;
+
+			a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
+				//reset all green circle timers
+
+				print("restting timers\n");
+				//for worlds {
+				//	for a : it.actors {
+				//		if has_flag(a, .UnlocksA | .BlockInteract) {
+				//			console_deinteract(a);
+				//		}
+				//	}
+				//}
+
+				//@CLEAN
+				//if is_holding_item(a1) {
+				//	item_drop(a1);
+				//	play_sound(.Death, vol_min=0.5, vol_max=0.6, pitch_min=0.95, pitch_max=1.1);
+				//}
 			}
 		}
 
@@ -1782,8 +1811,8 @@ player_tick_pure :: (a : *Actor, dt : float) {
 	}
 }
 
-console_tick :: (actor : *Actor, dt : float) {
-}
+//@CLEAN is this needed?
+console_tick :: (actor : *Actor, dt : float) {}
 
 console_interact_a :: (a : *Actor, interactor : *Actor) {
 	a.flags |= .BlockInteract;

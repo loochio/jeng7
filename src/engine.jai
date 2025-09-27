@@ -360,7 +360,7 @@ Collider :: struct {
 	asleep := false;
 
 	//@TODO maybe store in global map so we don't need to set this for every collider
-	is_a : ColliderMask; 
+	is_a : ColliderMask;
 	collides_with : ColliderMask;
 }
 
@@ -381,6 +381,12 @@ ColliderMask :: enum_flags u8 {
 	Pawn;
 	Wall;
 	Hero;
+}
+
+ColliderFlags :: enum_flags u8 {
+	Enabled;
+	Asleep;
+	Overlapping;
 }
 
 collider_reset :: (c : *Collider) {
