@@ -356,12 +356,16 @@ Collider :: struct {
 	type := ColliderType.Inactive;
 	shape := ColliderShape.Circle;
 	size : Vector2;
+	flags : ColliderFlags;
 	enabled := true;
 	asleep := false;
 
 	//@TODO maybe store in global map so we don't need to set this for every collider
 	is_a : ColliderMask;
 	collides_with : ColliderMask;
+
+	//@CLEAN
+	//collissions : [..] *Collider;
 }
 
 ColliderType :: enum u8 {
@@ -384,8 +388,8 @@ ColliderMask :: enum_flags u8 {
 }
 
 ColliderFlags :: enum_flags u8 {
-	Enabled;
-	Asleep;
+	//Enabled; @TODO add these eventually
+	//Asleep;
 	Overlapping;
 }
 

@@ -84,6 +84,7 @@ editor_deinit :: () {
 	print("~~~ Editor Deinit ~~~ Level=%\n", editor_level.name);
 	level_reset(*editor_level);
 
+	clear_selection();
 	for tool_options {
 		string_reset(*it);
 	}

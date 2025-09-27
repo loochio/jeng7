@@ -177,7 +177,7 @@ init_sprites :: () {
 	sprites[TextureID.ButtonPickupA] = init_sprite(.ButtonPickupA, frames=2);
 	sprites[TextureID.LockA] 	= init_sprite(.LockA, frames=2, layer=-50);
 	sprites[TextureID.LockBig] 	= init_sprite(.LockBig, frames=4, layer=-50, frame_size=.{64,64});
-	sprites[TextureID.TimerResetA] = init_sprite(.TimerResetA, layer=-100);
+	sprites[TextureID.TimerResetA] = init_sprite(.TimerResetA, frames=2, layer=-100);
 
 
 	sprites[TextureID.DropZone] = init_sprite(.DropZone, layer=-100);

@@ -24,6 +24,10 @@ Gameplay Engine Tech Ideas
 Need to do an Aethetic prototype.
 
 
+27 Sept 2025 from crispy_penguin
+TODO: Fix later
+
+
 14 Sept 2025 from Moonbase420
 // Dear maintainer: // 
 // Once you are done trying to 'optimize' this routine, 
@@ -332,6 +336,16 @@ physics_tick :: (using world : *World, dt : float) {
 
 				if a.proc_onhit a.proc_onhit(a,b);
 				if b.proc_onhit b.proc_onhit(b,a);
+
+				//@TODO handle first overlap event
+				//if a.body.flags & .Overlapping == 0 {
+				//	//print("first overlap A\n");
+				//	a.body.flags |= .Overlapping;
+				//}
+				//if b.body.flags & .Overlapping == 0{
+				//	print("first overlap B\n");
+				//	b.body.flags |= .Overlapping;
+				//}
 			}
 		}
 	}
@@ -1340,9 +1354,10 @@ ActorFlags :: enum_flags s64 {
 
 	LockA 			:: 1<<23;
 	UnlocksA 		:: 1<<24;
+	ResetsA 		:: 1<<25;
 
-	LockBig 		:: 1<<25;
-	UnlocksBig 		:: 1<<26;
+	LockBig 		:: 1<<26;
+	UnlocksBig 		:: 1<<27;
 }
 
 has_flag :: (a: *Actor, flag : ActorFlags) -> bool {
@@ -1424,34 +1439,7 @@ actor_alloc :: (world : *World, type : ActorType) -> *Actor{
 	return actor;
 } 
 
-/*@CLEAN
-init_actor :: (world : *World) -> *Actor{
-	// find available memory in our world
-	a : *Actor;
-	while a == null {
-		//reached the end of our static allocs
-		//@TODO I'm not sure what I want to do here yet
-		assert(world.actors_tail < MAX_ACTORS_PER_WORLD);
-
-		a = *world.actors[world.actors_tail];
-		world.actors_tail += 1;
-
-		if is_valid(a) continue;
-
-		world.actors[world.actors_tail-1] = Actor.{};
-		a.world = world;
-		a.flags |= .Initialized;
-		actor_id += 1;
-		a.id = actor_id;
-		break;
-	}
-	assert(a != null);
-	return a;
-}*/
-
 actor_free :: (a : *Actor) {
-	//a.type = .EMPTY; @CLEAN
-	//a.flags = 0;
 	string_reset(*a.payload);
 	collider_reset(*a.body);
 	collider_reset(*a.interact_collider);
@@ -1523,7 +1511,6 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			// link this world to a child world
 			a.child_world = get_world(spawner.data);
 
-			//@CLEAN
 			// only set the parent on the first time, preventing broken exit chains
 			if a.child_world.parent == null
 				a.child_world.parent = a.world;
@@ -1577,10 +1564,12 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			sprite_pause(*a.sprite);
 
-			a.proc_on_interact = console_interact_a;
-			a.proc_onlifetime_expired = console_deinteract;
 			a.proc_render = render_clock;
-			a.proc_tick = console_tick;
+			a.proc_on_interact = console_interact_a;
+			a.proc_onlifetime_expired = (a : *Actor) {
+				console_deinteract(a);
+				play_sound(.Pause);
+			}
 		}
 
 		case .ConsoleMovable; {
@@ -1592,10 +1581,14 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			sprite_pause(*a.sprite);
 
-			a.proc_on_interact = console_interact_a;
-			a.proc_onlifetime_expired = console_deinteract;
 			a.proc_render = render_clock;
-			a.proc_tick = console_tick;
+			a.proc_on_interact = console_interact_a;
+			//@CLEAN a.proc_onlifetime_expired = console_deinteract;
+
+			a.proc_onlifetime_expired = (a : *Actor) {
+				console_deinteract(a);
+				play_sound(.Pause);
+			}
 		}
 
 		case .WallLock; {
@@ -1630,29 +1623,47 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		}
 
 		case .TimerResetA; {
+			//@OPTIMIZE this whole actor is error prone, very fragile
+			// There's (flag) LockA, which is required for the initial on_interact
+			// on_interact gives (flag) ResetsA
+			// on_hit resets active locks (.UnlocksA | .BlockInteract)
+			// removes (flag) ResetsA
+
+			a.flags |= .LockA; // needed to react to proc_on_interact
 			a.body.type = .Trigger;
 			a.body.shape = .Box;
 			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn;
+			sprite_pause(*a.sprite);
 
 			a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
-				//reset all green circle timers
+				if !has_flag(a0, .ResetsA) return;
 
-				print("restting timers\n");
-				//for worlds {
-				//	for a : it.actors {
-				//		if has_flag(a, .UnlocksA | .BlockInteract) {
-				//			console_deinteract(a);
-				//		}
-				//	}
-				//}
+				//reset all A Timers (green circle)
+				//@OPTIMIZE trigger this during an on_overlap_begin event
+				for worlds {
+					for a : it.actors {
+						if a == a0 continue;
+						if has_flag(a, .UnlocksA | .BlockInteract) {
+							console_deinteract(a);
+						}
+					}
+				}
+				for worlds {
+					for a : it.actors {
+						if a.type == .TimerResetA {
+							a.flags &= ~.ResetsA;
+							sprite_reset(*a.sprite);
+						}
+					}
+				}
+				play_sound(.Pause);
+			}
 
-				//@CLEAN
-				//if is_holding_item(a1) {
-				//	item_drop(a1);
-				//	play_sound(.Death, vol_min=0.5, vol_max=0.6, pitch_min=0.95, pitch_max=1.1);
-				//}
+			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
+				a.flags |= .ResetsA;
+				sprite_step(*a.sprite);
 			}
 		}
 
@@ -1811,9 +1822,6 @@ player_tick_pure :: (a : *Actor, dt : float) {
 	}
 }
 
-//@CLEAN is this needed?
-console_tick :: (actor : *Actor, dt : float) {}
-
 console_interact_a :: (a : *Actor, interactor : *Actor) {
 	a.flags |= .BlockInteract;
 	a.lifetime = 3.;
@@ -1835,10 +1843,16 @@ console_interact_a :: (a : *Actor, interactor : *Actor) {
 }
 
 console_deinteract :: (a : *Actor) {
+	if a.lifetime < 0 {
+		assert(!has_flag(a, .BlockInteract));
+		return;
+	}
+
 	a.flags &= ~.BlockInteract;
 	a.lifetime = -1.;
+	sprite_step(*a.sprite);
 
-	// close time
+	// open up the locks
 	assert(has_flag(a, .UnlocksA));
 	for *w : worlds {
 		if !is_valid(w) continue;
@@ -1848,9 +1862,6 @@ console_deinteract :: (a : *Actor) {
 			if has_flag(target, .LockA) interact(target, a);
 		}
 	}
-
-	sprite_step(*a.sprite);
-	play_sound(.Pause);
 }
 
 render_clock :: (a : *Actor, nests : float, clip : Box, pos_in_window : Vector2) {
