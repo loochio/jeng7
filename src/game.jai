@@ -157,7 +157,7 @@ toggle_pause :: () {
 
 
 // ~~~ physics simulation ~~~
-PHYSICS_ITERATIONS :: 1;
+//PHYSICS_ITERATIONS :: 1; @CLEAN
 PHYSICS_SLEEP_THRESHOLD :: 0.0001;
 PARTITION_CELL_SIZE :: 75.; // world units, needs to be large enough to cover a collider size
 PARTITION_RANGE :: 1;
@@ -234,84 +234,100 @@ physics_tick :: (using world : *World, dt : float) {
 	}
 
 	// collision resolution
-	for 0..PHYSICS_ITERATIONS 
-	{
-		if !enable_collisions break;
+	//for 0..PHYSICS_ITERATIONS @CLEAN
+	//{
+	if !enable_collisions return;
 
-		for i : actors_head..actors_tail {
-			a := *actors[i];
-			if !is_valid(a) continue;
-			if !a.body.enabled continue;
-			if a.body.asleep continue;
-			if a.body.type != .Dynamic continue; 
+	for i : actors_head..actors_tail {
+		a := *actors[i];
+		if !is_valid(a) continue;
+		if !a.body.enabled continue;
+		if a.body.asleep continue;
+		if a.body.type != .Dynamic continue; 
 
-			for j : actors_head..actors_tail {
-				b := *actors[j];
-				if !is_valid(b) continue;
-				if a == b continue;
-				if !is_in_partition_range(a,b) continue;
+		for j : actors_head..actors_tail {
+			b := *actors[j];
+			if !is_valid(b) continue;
+			if a == b continue;
+			if !is_in_partition_range(a,b) continue;
 
-				// a is overlapping b, resolve collision, move a out of b
-				//@OPTIMIZE tons of duplicated math, refactor for ez speed gains
-				// There's a lot that can be refactored down in to is_overlap(..)
-				if is_overlap(a.position, *a.body, b.position, *b.body) {
-					apos := a.position;
-					bpos := b.position;
-					dir := normalize(bpos-apos);
-					dist := distance(apos, bpos);
+			// a is overlapping b, resolve collision, move a out of b
+			//@OPTIMIZE tons of duplicated math, refactor for ez speed gains
+			// There's a lot that can be refactored down in to is_overlap(..)
+			if is_overlap(a.position, *a.body, b.position, *b.body) {
+				apos := a.position;
+				bpos := b.position;
+				dv0 := bpos-apos;
+				dir := normalize(dv0);
+				dist := distance(apos, bpos);
 
-					//@OPTIMIMZE move this into is_overlap(..)
-					if b.body.shape== {
-						case .Circle; {
-							diff := a.body.size.x + b.body.size.x - dist; //overlap depth
-							dv := dir*diff;
+				//@OPTIMIZE move this into is_overlap(..)
+				if b.body.shape== {
+					case .Circle; {
+						diff := a.body.size.x + b.body.size.x - dist; //overlap depth
+						dv := dir*diff;
 
-							if b.body.type == {
-								case .Dynamic; {
-									a.position -= dv/2.;
-									b.position += dv/2.;
-								}
-								case .Static; #through;
-								case .Kinematic; {
-									a.position -= dv;
-								}
+						if b.body.type == {
+							case .Dynamic; {
+								a.position -= dv/2.;
+								b.position += dv/2.;
 							}
-						}
-						case .Box; {
-							assert(b.body.type != .Dynamic); //@TODO side stepping this case for now
-							//edge_x := clamp(apos.x, bpos.x-b.body.size.x/2., bpos.x+b.body.size.x/2.);
-							//edge_y := clamp(apos.y, bpos.y-b.body.size.y/2., bpos.y+b.body.size.y/2.);
-							//dx := apos.x - edge_x; //@CLEAN
-							
-
-							//dy := apos.y - edge_y;
-							//if apos.x > bpos.x-b.body.size.x/2. {
-							//	a.position.x = bpos.x-b.body.size.x/2. - a.body.size.x;
-							//}
-							//if apos.x < bpos.x+b.body.size.x/2. {
-							//	a.position.x = bpos.x-b.body.size.x/2. - a.body.size.x;
-							//}
-
-							//@TODO temp
-							diff := a.body.size.x + b.body.size.x - dist; //overlap depth
-							dv := dir*diff;
-							if b.body.type == {
-								//case .Dynamic; {
-								//	a.position -= dv/2.;
-								//	b.position += dv/2.;
-								//}
-								case .Static; #through;
-								case .Kinematic; {
-									a.position -= dv;
-								}
+							case .Static; #through;
+							case .Kinematic; {
+								a.position -= dv;
 							}
-							
 						}
 					}
+					case .Box; {
+						assert(b.body.type != .Dynamic); //@TODO side stepping this case for now
+						
+						if apos.x > bpos.x-b.body.size.x/2. && apos.x < bpos.x+b.body.size.x/2. {
+							dx := (bpos.x-apos.x) - (a.body.size.x + b.body.size.x/2.);
+							if dx < 0 {
+								a.position.x += dx; 
+							}
+						} 
+						
+						if apos.y > bpos.y-b.body.size.y/2. && apos.y < bpos.y+b.body.size.y/2. {
+							dy := (bpos.y-apos.y) - (a.body.size.y + b.body.size.y/2.);
+							if dy < 0 {
+								a.position.y += dy; 
+							}
+						}
+						
 
-					if a.proc_onhit a.proc_onhit(a,b);
-					if b.proc_onhit b.proc_onhit(b,a);
+						//edge_x := clamp(apos.x, bpos.x-b.body.size.x/2., bpos.x+b.body.size.x/2.);
+						//edge_y := clamp(apos.y, bpos.y-b.body.size.y/2., bpos.y+b.body.size.y/2.);
+						//dx := apos.x - edge_x; //@CLEAN
+						
+
+						//dy := apos.y - edge_y;
+						//if apos.x > bpos.x-b.body.size.x/2. {
+						//	a.position.x = bpos.x-b.body.size.x/2. - a.body.size.x;
+						//}
+						//if apos.x < bpos.x+b.body.size.x/2. {
+						//	a.position.x = bpos.x-b.body.size.x/2. - a.body.size.x;
+						//}
+
+						//@TODO temp
+						//diff := a.body.size.x + b.body.size.x - dist; //overlap depth
+						//dv := dir*diff;
+						//if b.body.type == {
+						//	//case .Dynamic; {
+						//	//	a.position -= dv/2.;
+						//	//	b.position += dv/2.;
+						//	//}
+						//	case .Static; #through;
+						//	case .Kinematic; {
+						//		a.position -= dv/2.;
+						//	}
+						//}
+						
+					}
 				}
+
+				if a.proc_onhit a.proc_onhit(a,b);
+				if b.proc_onhit b.proc_onhit(b,a);
 			}
 		}
 	}
@@ -567,7 +583,6 @@ set_active_world :: (actor : *Actor) {
 // begin a transition to the specified world, pop to the actor.world.parent if no world provideds
 world_transition_begin :: (a : *Actor, world : *World = null) {
 	enter := world != null;
-
 	if !enter && a.world.parent == null {
 		//@TODO probably should setup a default parent world we always warp to
 		print("ERROR No parent world found\n");
@@ -590,7 +605,6 @@ world_transition_begin :: (a : *Actor, world : *World = null) {
 	a.world.transition_actor = a;
 	a.world.transition_world = ifx enter then world else a.world.parent;
 	assert(a.world.transition_world != null);
-	//assert(a.world.transition_world != a.world); @CLEAN
 
 	play_sound(.Warp);
 }
@@ -673,11 +687,8 @@ world_exit :: (a : *Actor) {
 }
 
 move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *Actor{
-	if actor.world == world {
-		print("attempting to reenter world=% with actor=% flags=%\n", world.name, actor.type, actor.flags);
-		return null;
-	}
-	print("attemping move world=% : [%] % \n", world.name, actor, actor.type);
+	// block trying to reenter the same world
+	if actor.world == world return null;
 
 	// force blocked items to drop before we start moving memory between worlds
 	item := actor.held_item;
@@ -708,12 +719,16 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 			// update the linked worlds along with their depth (level of nesting)
 			new_actor.child_world.parent = world;
 			new_actor.child_world.depth = world.depth+1;
+
+			//@DESIGN opportunity here for a different type of WorldEntrance
+			// one that doesn't change its child_world.parent
+			// this can create a one way exit, always exiting in the same place
 		}
 	}
 
 	// update world conditions, wipe any time flags
-	//@TODO potentially sloppy, does this need to be more precise
-	//@TODO2 yes, this needs to be more precise for TimeInfinite (for now)
+	//@OPTIMIZE potentially sloppy, does this need to be more precise
+	//@OPTIMIZE2 yes, this needs to be more precise for TimeInfinite (for now)
 	for *w : worlds {
 		if !is_valid(w) continue;
 		w.timeflags &= ~.TimeInfinite;
