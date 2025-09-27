@@ -157,9 +157,8 @@ toggle_pause :: () {
 
 
 // ~~~ physics simulation ~~~
-//PHYSICS_ITERATIONS :: 1; @CLEAN
 PHYSICS_SLEEP_THRESHOLD :: 0.0001;
-PARTITION_CELL_SIZE :: 75.; // world units, needs to be large enough to cover a collider size
+PARTITION_CELL_SIZE :: 100.; // world units, needs to be large enough to cover a collider size
 PARTITION_RANGE :: 1;
 
 pause_physics := false;
@@ -234,8 +233,6 @@ physics_tick :: (using world : *World, dt : float) {
 	}
 
 	// collision resolution
-	//for 0..PHYSICS_ITERATIONS @CLEAN
-	//{
 	if !enable_collisions return;
 
 	for i : actors_head..actors_tail {

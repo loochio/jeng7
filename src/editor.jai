@@ -416,7 +416,7 @@ editor_spawner_move :: (spawner : *ActorSpawner, pos : Vector2) {
 
 editor_selection_move :: (dv : Vector2) {
 	if ui_hit_this_frame return;
-	
+
 	for selected_spawner_idxs {
 		spawner := get_selection(it_index);
 		pos := spawner.position + dv;

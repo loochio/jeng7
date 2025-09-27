@@ -461,16 +461,6 @@ get_box_intersection :: (a : Box, b : Box) -> bool, Box {
 	return false, Box.{};
 }
 
-//@TODO
-/*to_box :: (aabb : *AABB) -> Box {
-	result := Box.{};
-	dx:= distance(aabb.upper.x, aabb.lower.x);
-	result.x = aabb.upper.x - aabb.lower.x
-	return .{
-		.x = 
-	};
-}*/
-
 string_reset :: (str : *string) {
 	if str.count free(str.data);
 	str.count = 0;
@@ -727,6 +717,133 @@ toggle_mute :: () {
 		set_master_volume(0);
 	}
 }
+
+
+// Pooling WIP
+//@TODO we tried making a custom iterator but it created all sorts of bugs 
+// because we weren't modifying values in the values array correctly.
+// The macro syntax is funky with how "for *a : actors" unrolls
+Pool :: struct (T : Type, size : s64) {
+	values : [size] T;
+	occupied : [size] bool;
+	head := 0;
+	tail := 0;
+}
+
+// fast alloc, O(1) (best case) well sort of, we still do a (probably) unnecessary loop
+pool_alloc :: (using pool : *Pool) -> *pool.T {
+	first_pass := true;
+	while tail < occupied.count {
+		if occupied[tail] {
+			tail += 1;
+
+			// try scanning from the beginning once before failing
+			if tail == occupied.count {
+				if first_pass{
+					first_pass = false;
+					tail = head;
+				}
+				else {
+					break;
+				}
+			}
+
+			continue;
+		}
+		assert(tail < occupied.count); //ran out of memory, not sure how we want to handle this
+		occupied[tail] = true;
+		return *values[tail];
+	}
+	assert(false); // failed to alloc mem
+	return null;
+}
+
+// Slow, linear lookup O(n)
+pool_remove :: (pool : *Pool, value : *pool.T) {
+	for pool {
+		if it == value {
+			pool.values[it_index] = .{};
+			pool.occupied[it_index] = false;
+			return;
+		}
+	}
+}
+
+for_expansion :: (pool : *Pool, body : Code, flags : For_Flags) #expand {
+	for idx : 0..pool.values.count-1 {
+		if !pool.occupied[idx] continue;
+
+		value := *pool.values[idx];
+		if !is_valid(value) continue;
+
+		`it := value;
+		`it_index := idx;
+
+		#insert body;
+	}
+}
+
+/* pool example with prints, not sure where to put this
+pool_example :: () {
+	actors : Pool(Actor, 10);
+	print("~~~ pool init\n\n");
+	for 0..3 {
+		actor := pool_alloc(*actors);
+		actor.type = .Block;
+		actor.flags |= .Initialized;
+		print("\tnew actor=% | flags=% type=%\n", actor, actor.flags, type_of(actor));
+	}
+
+	hero := pool_alloc(*actors);
+	hero.type = .Hero;
+	hero.flags |= .Initialized;
+
+	for 0..3 {
+		actor := pool_alloc(*actors);
+		actor.type = .Block;
+		actor.flags |= .Initialized;
+		print("\tnew actor=% | flags=% type=%\n", actor, actor.flags, type_of(actor));
+	}
+	
+	print("~~~ pool contents\n\n");
+	for actors {
+		print("\tVALID % flags=%\n", it.type, it.flags);
+	}
+
+	pool_free(*actors, hero);
+
+	print("~~~ pool post free\n\n");
+	for actors {
+		print("\tVALID % flags=%\n", it.type, it.flags);
+	}
+
+	print("~~~ pool free a few\n\n");
+	count := 3;
+	for actors {
+		pool_free(*actors, it);
+		count -= 1;
+		if count <= 0 break;
+	}
+
+	print("~~~ pool contents\n\n");
+	for actors {
+		print("\tVALID % flags=%\n", it.type, it.flags);
+	}
+
+	print("~~~ pool fill \n\n");
+	for 0..4 {
+		actor := pool_alloc(*actors);
+		actor.type = .Block;
+		actor.flags |= .Initialized;
+		print("\tnew actor=% | flags=% type=%\n", actor, actor.flags, type_of(actor));
+	}
+
+	print("~~~ pool contents 2\n\n");
+	for actors {
+		print("\t% flags=%\n", it.type, it.flags);
+	}
+}
+*/
 
 
 // ~~ Particle System ~~
