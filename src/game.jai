@@ -70,7 +70,7 @@ game_begin :: () {
 	assert(is_valid(level_start));
 
 	// initialize from the root world
-	actor_id = 0;
+	actor_guid = 0;
 	root_world := world_init(level_root);
 	assert(root_world != null);
 	for * worlds {
@@ -189,9 +189,10 @@ physics_tick :: (using world : *World, dt : float) {
 	if pause_physics return;
 
 	// update pos
-	for i : actors_head..actors_tail {
-		a := *actors[i];
-		if !is_valid(a) continue;
+	for a : actors {
+	//for i : actors_head..actors_tail { @CLEAN
+	//	a := *actors[i];
+	//	if !is_valid(a) continue;
 
 		if distance_squared(a.position, a.prev_position) < PHYSICS_SLEEP_THRESHOLD {
 			a.body.asleep = true;
@@ -208,9 +209,11 @@ physics_tick :: (using world : *World, dt : float) {
 	}
 
 	// velocity, trigger overlaps 
-	for i : actors_head..actors_tail {
-		a := *actors[i];
-		if !is_valid(a) continue;
+	for a : actors {
+	//for i : actors_head..actors_tail { @CLEAN
+	//	a := *actors[i];
+	//	if !is_valid(a) continue;
+
 		if !a.body.enabled continue;
 		if a.body.type == .Static continue;
 
@@ -235,16 +238,20 @@ physics_tick :: (using world : *World, dt : float) {
 	// collision resolution
 	if !enable_collisions return;
 
-	for i : actors_head..actors_tail {
-		a := *actors[i];
-		if !is_valid(a) continue;
+	for a : actors {
+	//for i : actors_head..actors_tail { @CLEAN
+	//	a := *actors[i];
+	//	if !is_valid(a) continue;
+
 		if !a.body.enabled continue;
 		if a.body.asleep continue;
 		if a.body.type != .Dynamic continue; 
 
-		for j : actors_head..actors_tail {
-			b := *actors[j];
-			if !is_valid(b) continue;
+		for b : actors {
+		//for j : actors_head..actors_tail { @CLEAN 
+		//	b := *actors[j];
+		//	if !is_valid(b) continue;
+
 			if a == b continue;
 			if !is_in_partition_range(a,b) continue;
 
@@ -374,9 +381,12 @@ game_render :: (dt : float) {
 	offset_index := 0;
 	for *w : worlds {
 		if !is_valid(w) continue;
-		for i : w.actors_head..w.actors_tail {
-			a := *w.actors[i];
-			if !is_valid(a) continue;
+
+		for a : w.actors {
+			//@CLEAN
+		//for i : w.actors_head..w.actors_tail {
+		//	a := *w.actors[i];
+		//	if !is_valid(a) continue;
 
 			// only render active timers
 			if !has_flag(a, .UnlocksA) continue;
@@ -465,9 +475,12 @@ World :: struct {
 	transition_actor : *Actor;
 	transition_world : *World;
 
-	actors : [MAX_ACTORS_PER_WORLD] Actor;
-	actors_head := 0;
-	actors_tail := 0;
+	actors : Pool(Actor, MAX_ACTORS_PER_WORLD);
+
+	//@CLEAN
+	//actors : [MAX_ACTORS_PER_WORLD] Actor;
+	//actors_head := 0;
+	//actors_tail := 0;
 	
 	camera : Camera;
 	focus : *Actor;
@@ -488,7 +501,7 @@ WorldTimeFlags :: enum_flags u8 {
 MAX_WORLDS :: 32; // fun fact: 128 worlds adds 1.2 sec to our total compile time (compared to 8 worlds)
 worlds : [MAX_WORLDS] World;
 MAX_ACTORS_PER_WORLD :: 4096;
-actor_id := 0;
+actor_guid := 0;
 active_world : *World;
 
 world_init :: (level_name : string, depth := 0.) -> *World {
@@ -627,8 +640,10 @@ world_transition_end :: (using world : *World) {
 world_enter :: (a : *Actor, world : *World) {
 	// warp to the pos of target world's exit
 	pos := Vector2.{};
-	for world.actors { //@OPTIMIZE iterate on world.head/tail
-		if !is_valid(*it) continue;
+	for world.actors {
+		//@CLEAN
+	//for world.actors { //@OPTIMIZE iterate on world.head/tail
+	//	if !is_valid(*it) continue;
 
 		if it.type == .WorldExit {
 			pos = it.position;
@@ -696,7 +711,8 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	}
 
 	assert(actor.world != world);
-	new_actor := init_actor(world);
+	new_actor := actor_alloc(world, actor.type);
+	//new_actor := init_actor(world); @CLEAN
 	memcpy(new_actor, actor, size_of(Actor));
  	defer actor_free(actor);
 
@@ -750,9 +766,10 @@ world_tick_pure :: (using world : *World, dt : float) {
 	}
 
 	// actors
-    for i : actors_head..actors_tail {
-		a := *actors[i];
-    	if !is_valid(a) continue;
+	for a : actors {
+    //for i : actors_head..actors_tail { @CLEAN
+	//	a := *actors[i];
+    //	if !is_valid(a) continue;
 
     	if a.proc_tick_pure a.proc_tick_pure(a, dt);
     }
@@ -794,9 +811,10 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 	}
 	
 	// actor ticks
-    for i : actors_head..actors_tail {
-		a := *actors[i];
-    	if !is_valid(a) continue;
+	for a : actors {
+    //for i : actors_head..actors_tail { @CLEAN
+	//	a := *actors[i];
+    //	if !is_valid(a) continue;
 
     	if (a.proc_tick) a.proc_tick(a, dt);
 
@@ -831,7 +849,9 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
     }
 
     for actors {
-    	if !is_valid(*it) continue;
+   // for actors { @CLEAN
+   // 	if !is_valid(*it) continue;
+
     	if it.child_world == null continue;
 
     	// passing pure_dt because we continue to do nested scaling later
@@ -903,10 +923,11 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 	// sprite rendering, sorted by position.y
 	sorted_actors : [..] *Actor;
 
-	for i : actors_head..actors_tail {
-		a := *actors[i];
-		if !is_valid(a) continue;
-
+	for a : actors {
+	//for i : actors_head..actors_tail { @CLEAN
+	//	a := *actors[i];
+	//	if !is_valid(a) continue;
+//
 		if ENABLE_FRUSTRUM_CULLING
 		{
 			//skip entities not in view
@@ -1388,6 +1409,18 @@ get_actor :: (aid : s64) -> *Actor {
 	return null;
 }
 
+actor_alloc :: (world : *World, type : ActorType) -> *Actor{
+	actor := pool_alloc(*world.actors);
+	actor.type = type;
+	actor.flags |= .Initialized;
+	actor_guid += 1;
+	actor.id = actor_guid;
+	actor.world = world;
+	assert(is_valid(actor), "type=%", type);
+	return actor;
+} 
+
+/*@CLEAN
 init_actor :: (world : *World) -> *Actor{
 	// find available memory in our world
 	a : *Actor;
@@ -1410,15 +1443,17 @@ init_actor :: (world : *World) -> *Actor{
 	}
 	assert(a != null);
 	return a;
-}
+}*/
 
 actor_free :: (a : *Actor) {
-	a.type = .EMPTY;
-	a.flags = 0;
+	//a.type = .EMPTY; @CLEAN
+	//a.flags = 0;
 	string_reset(*a.payload);
 	collider_reset(*a.body);
 	collider_reset(*a.interact_collider);
 	array_reset_keeping_memory(*a.children);
+
+	pool_remove(*a.world.actors, a);
 }
 
 // hero configs
@@ -1432,8 +1467,9 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 }
 
 spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
-	a := init_actor(world);
-	a.type = spawner.type;
+	a := actor_alloc(world, spawner.type);
+	//a.type = spawner.type; @CLEAN
+	assert(is_valid(a));
 	a.sprite = get_actor_sprite(a.type);
 	a.position = spawner.position;
 	a.payload = sprint(spawner.data);
@@ -1692,9 +1728,12 @@ player_tick_pure :: (a : *Actor, dt : float) {
     	}
     	else
     	{
-    		for i : w.actors_head..w.actors_tail {
-				b := *w.actors[i];
-	    		if !is_valid(b) continue;
+    		for b : w.actors {
+    		//for i : w.actors_head..w.actors_tail { @CLEAN
+			//	b := *w.actors[i];
+	    	//	if !is_valid(b) continue;
+//
+				//b := it;
 	    		if a == b continue;
 	    		if b.flags & .Pickupable == 0 continue;
 	    		if !is_in_partition_range(a, b) continue;
@@ -1713,9 +1752,12 @@ player_tick_pure :: (a : *Actor, dt : float) {
     interact_target : *Actor;
 
     // find a target
-	for i : w.actors_head..w.actors_tail {
-		b := *w.actors[i];
-		if !is_valid(b) continue;
+    for b : w.actors {
+	//for i : w.actors_head..w.actors_tail {
+	//	b := *w.actors[i];
+	//	if !is_valid(b) continue;
+
+		//b := it;
 		if a == b continue;
 		if b.flags & .Interactable == 0 continue;
 		if b.flags & .BlockInteract != 0 continue;

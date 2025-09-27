@@ -719,10 +719,8 @@ toggle_mute :: () {
 }
 
 
-// Pooling WIP
-//@TODO we tried making a custom iterator but it created all sorts of bugs 
-// because we weren't modifying values in the values array correctly.
-// The macro syntax is funky with how "for *a : actors" unrolls
+// ~~~ Pooling ~~~
+
 Pool :: struct (T : Type, size : s64) {
 	values : [size] T;
 	occupied : [size] bool;
