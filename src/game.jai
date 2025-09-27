@@ -163,7 +163,7 @@ PARTITION_RANGE :: 1;
 
 pause_physics := false;
 enable_collisions := true;
-debug_colliders := true;
+debug_colliders := false;
 
 
 //@TODO could move to engine.jai
@@ -285,19 +285,19 @@ physics_tick :: (using world : *World, dt : float) {
 					case .Box; {
 						assert(b.body.type != .Dynamic); //@TODO side stepping this case for now
 						
-						if apos.x > bpos.x-b.body.size.x/2. && apos.x < bpos.x+b.body.size.x/2. {
-							dx := (bpos.x-apos.x) - (a.body.size.x + b.body.size.x/2.);
-							if dx < 0 {
-								a.position.x += dx; 
-							}
-						} 
-						
-						if apos.y > bpos.y-b.body.size.y/2. && apos.y < bpos.y+b.body.size.y/2. {
-							dy := (bpos.y-apos.y) - (a.body.size.y + b.body.size.y/2.);
-							if dy < 0 {
-								a.position.y += dy; 
-							}
-						}
+						//if apos.x > bpos.x-b.body.size.x/2. && apos.x < bpos.x+b.body.size.x/2. {
+						//	dx := (bpos.x-apos.x) - (a.body.size.x + b.body.size.x/2.);
+						//	if dx < 0 {
+						//		a.position.x += dx; 
+						//	}
+						//} 
+						//
+						//if apos.y > bpos.y-b.body.size.y/2. && apos.y < bpos.y+b.body.size.y/2. {
+						//	dy := (bpos.y-apos.y) - (a.body.size.y + b.body.size.y/2.);
+						//	if dy < 0 {
+						//		a.position.y += dy; 
+						//	}
+						//}
 						
 
 						//edge_x := clamp(apos.x, bpos.x-b.body.size.x/2., bpos.x+b.body.size.x/2.);
@@ -314,18 +314,18 @@ physics_tick :: (using world : *World, dt : float) {
 						//}
 
 						//@TODO temp
-						//diff := a.body.size.x + b.body.size.x - dist; //overlap depth
-						//dv := dir*diff;
-						//if b.body.type == {
-						//	//case .Dynamic; {
-						//	//	a.position -= dv/2.;
-						//	//	b.position += dv/2.;
-						//	//}
-						//	case .Static; #through;
-						//	case .Kinematic; {
-						//		a.position -= dv/2.;
-						//	}
-						//}
+						diff := a.body.size.x + b.body.size.x - dist; //overlap depth
+						dv := dir*diff;
+						if b.body.type == {
+							//case .Dynamic; {
+							//	a.position -= dv/2.;
+							//	b.position += dv/2.;
+							//}
+							case .Static; #through;
+							case .Kinematic; {
+								a.position -= dv/2.;
+							}
+						}
 						
 					}
 				}
@@ -638,6 +638,7 @@ world_transition_end :: (using world : *World) {
 }
 
 world_enter :: (a : *Actor, world : *World) {
+	print("world enter | type=%\n", a.type);
 	// warp to the pos of target world's exit
 	pos := Vector2.{};
 	for world.actors {
@@ -647,19 +648,19 @@ world_enter :: (a : *Actor, world : *World) {
 
 		if it.type == .WorldExit {
 			pos = it.position;
+			print("found exit position%\n", pos);
 			break;
 		}
 	}
 
 	new_actor := move_actor_to_world(a, world, pos);
-	if new_actor {
-		assert(!is_valid(a));
-		if has_flag(new_actor, .Possessed)
-			set_active_world(new_actor);
+	if new_actor && has_flag(new_actor, .Possessed){
+		set_active_world(new_actor);
 	}
 }
 
 world_exit :: (a : *Actor) {
+	print("world EXIT | type=%\n", a.type);
 	assert(a != null);
 	assert(a.world.parent != null);
 
@@ -677,8 +678,8 @@ world_exit :: (a : *Actor) {
 
 	// warp to the parent entrance position
 	pos := Vector2.{};
-	for * a.world.parent.actors { //@OPTIMIZE iterate on world.head/tail
-		if !is_valid(it) continue;
+	for a.world.parent.actors { 
+		//if !is_valid(it) continue; @CLEAN
 
 		if it.type == .WorldEntrance && a.world == it.child_world {
 			pos = it.position;
@@ -688,11 +689,7 @@ world_exit :: (a : *Actor) {
 
 	new_actor := move_actor_to_world(a, a.world.parent, pos);
 
-	//@OPTIMIZE this doesn't seem correct. looks like it only works for Possessed actors
-	// I guess we're only calling world_exit for Possessed actors
-	if new_actor {
-		assert(!is_valid(a));
-		assert(has_flag(new_actor, .Possessed));
+	if new_actor && has_flag(new_actor, .Possessed){
 		set_active_world(new_actor);
 		play_sound(.Warp, pitch_min=.7, pitch_max=.7);
 	}
@@ -700,7 +697,11 @@ world_exit :: (a : *Actor) {
 
 move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *Actor{
 	// block trying to reenter the same world
-	if actor.world == world return null;
+	if actor.world == world {
+		print("reentering the same world | aid=% | type=%\n", actor.id, actor.type);
+		actor.position = pos;
+		return actor;
+	}
 
 	// force blocked items to drop before we start moving memory between worlds
 	item := actor.held_item;
@@ -712,13 +713,13 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 
 	assert(actor.world != world);
 	new_actor := actor_alloc(world, actor.type);
-	//new_actor := init_actor(world); @CLEAN
 	memcpy(new_actor, actor, size_of(Actor));
- 	defer actor_free(actor);
+ 	actor_free(actor);
 
 	// we need to reset the world bc it gets overwritten with memcpy()
 	new_actor.world = world;
 	new_actor.position = pos;
+	new_actor.held_item = null;
 
 	if item != null {
 		i := move_actor_to_world(item, world);
@@ -1519,15 +1520,21 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			// link this world to a child world
 			a.child_world = get_world(spawner.data);
-			a.child_world.parent = a.world;
+
+			//@CLEAN
+			// only set the parent on the first time, preventing broken exit chains
+			if a.child_world.parent == null
+				a.child_world.parent = a.world;
 
 			a.proc_render_subworld = subworld_render; 
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
+				// set the exit parent to the world you're coming from
+				a.child_world.parent = a.world;
 				world_transition_begin(interactor, a.child_world);
 			}
 
-			//@TODO warp on collision, needs to work given that everything warps back right away
+			//@DESIGN warp on collision, needs to work given that everything warps back right away
 			//a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
 			//	if a1.flags & .BlockWarping return;
 			//
@@ -1995,6 +2002,25 @@ register_cheats :: () {
 		for * worlds {
 			if !is_valid(it) continue;
 			it.timeflags |= .TimeFlipped;
+		}
+	});
+
+	register_cmd("goto", (args: .. Any) { 
+		if args.count == 1 {
+			arg := args[0];
+			name := tprint("%", arg);
+
+			if !exists(name) {
+				print("goto failed, level does not exist: %\n", name);
+				return;
+			}
+
+			for active_world.actors {
+				if has_flag(it, .Possessed) {
+					world := get_world(name);
+					world_enter(it, world);
+				}
+			}
 		}
 	});
 
