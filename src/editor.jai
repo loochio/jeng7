@@ -53,9 +53,6 @@ editor_init :: () {
 		}
 	});
 	register_cmd("reload", (args: .. Any) { editor_reload(); }); 
-	register_cmd("load_prev", (args: .. Any) { 
-		//editor_load(prev_level_name); //@CLEAN
-	} );
 
 	// Init subwindow UI
 	{ // level 
@@ -477,7 +474,6 @@ EditorTool_Actor :: struct {
 	#as using tool : EditorTool;
 
 	actor_type := ActorType.Block;
-	//actor_data : string; @CLEAN
 }
 
 tool_actor :: EditorTool_Actor.{
@@ -498,7 +494,6 @@ tool_init_actor :: (tool : *EditorTool) {
 	print("\ttool actor: name=%\n", atool.name);
 	print("\ttool actor: key=%\n", atool.key);
 	print("\ttool actor: type=%\n", atool.actor_type);
-	//print("\ttool actor: actor_data=%\n", atool.actor_data); @CLEAN
 }
 
 tool_tick_actor :: (t : *EditorTool, dt : float) {
@@ -521,7 +516,6 @@ tool_tick_actor :: (t : *EditorTool, dt : float) {
 						.{1,1},
 						"",
 					} 
-					//atool.actor_data} @CLEAN
 				);
 			}
 		}

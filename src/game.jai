@@ -98,37 +98,6 @@ game_begin :: () {
 	}
 
 	print("\tInitial world activation: %\n", active_world.name);
-
-	/*
-	// print out a world mapping 
-	print_world :: (world : *World, depth := 0) {
-		if world == null return;
-		if !is_valid(world) return;
-
-		// formatting
-		d := depth;
-		while d >=0 {
-			print("-");
-			d -= 1;
-		}
-
-		print("D% %\n", depth, world.name);
-		for world.actors {
-			if it.child_world == world {
-				// formatting
-				d := depth;
-				while d >=0 {
-					print("-");
-					d -= 1;
-				}
-				print("[SELF REF]] D% %\n", depth, world.name);
-				continue;
-			}
-			print_world(it.child_world, depth+1);
-		}
-	}
-	print_world(root_world);
-	*/
 }
 
 game_end :: () {
@@ -139,7 +108,6 @@ game_end :: () {
 		world_deinit(*it);
 	}
 	active_world = null;
-
 	active_sign.enabled = false;
 }
 
@@ -224,10 +192,6 @@ physics_tick :: (using world : *World, dt : float) {
 
 	// update pos
 	for a : actors {
-	//for i : actors_head..actors_tail { @CLEAN
-	//	a := *actors[i];
-	//	if !is_valid(a) continue;
-
 		if distance_squared(a.position, a.prev_position) < PHYSICS_SLEEP_THRESHOLD {
 			a.body.asleep = true;
 		}
@@ -237,17 +201,12 @@ physics_tick :: (using world : *World, dt : float) {
 		}
 
 		a.prev_position = a.position;
-
 		a.partition_cell_x = get_partition_index_from_world_pos(a.position.x);
 		a.partition_cell_y = get_partition_index_from_world_pos(a.position.y);
 	}
 
 	// velocity, trigger overlaps 
 	for a : actors {
-	//for i : actors_head..actors_tail { @CLEAN
-	//	a := *actors[i];
-	//	if !is_valid(a) continue;
-
 		if !a.body.enabled continue;
 		if a.body.type == .Static continue;
 
@@ -273,19 +232,11 @@ physics_tick :: (using world : *World, dt : float) {
 	if !enable_collisions return;
 
 	for a : actors {
-	//for i : actors_head..actors_tail { @CLEAN
-	//	a := *actors[i];
-	//	if !is_valid(a) continue;
-
 		if !a.body.enabled continue;
 		if a.body.asleep continue;
 		if a.body.type != .Dynamic continue; 
 
 		for b : actors {
-		//for j : actors_head..actors_tail { @CLEAN 
-		//	b := *actors[j];
-		//	if !is_valid(b) continue;
-
 			if a == b continue;
 			if !is_in_partition_range(a,b) continue;
 
@@ -427,11 +378,6 @@ game_render :: (dt : float) {
 		if !is_valid(w) continue;
 
 		for a : w.actors {
-			//@CLEAN
-		//for i : w.actors_head..w.actors_tail {
-		//	a := *w.actors[i];
-		//	if !is_valid(a) continue;
-
 			// only render active timers
 			if !has_flag(a, .UnlocksA) continue;
 			if a.lifetime <= 0. continue;
@@ -484,9 +430,7 @@ game_render :: (dt : float) {
 	    draw_prepared_text(hud_font, text_x, xx text_y, G_BLACK);
 	}
 
-	if active_sign.enabled {
-		sign_render(dt);
-	}
+	if active_sign.enabled sign_render(dt);
 
 	if debug_colliders {
 		for *a : active_world.actors {
@@ -520,11 +464,6 @@ World :: struct {
 	transition_world : *World;
 
 	actors : Pool(Actor, MAX_ACTORS_PER_WORLD);
-
-	//@CLEAN
-	//actors : [MAX_ACTORS_PER_WORLD] Actor;
-	//actors_head := 0;
-	//actors_tail := 0;
 	
 	camera : Camera;
 	focus : *Actor;
@@ -543,7 +482,7 @@ WorldTimeFlags :: enum_flags u8 {
 
 
 MAX_WORLDS :: 32; // fun fact: 128 worlds adds 1.2 sec to our total compile time (compared to 8 worlds)
-worlds : [MAX_WORLDS] World;
+worlds : [MAX_WORLDS] World; //@TODO worlds : Pool(World, MAX_WORLDS);
 MAX_ACTORS_PER_WORLD :: 4096;
 actor_guid := 0;
 active_world : *World;
@@ -563,7 +502,6 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 	assert(w != null);
 
 	level_load(level_name, *w.level);
-	print("World initialize: % [%]\n", w.name, w);
 
 	// warps, linking worlds
 	for w.spawners {
@@ -573,18 +511,16 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 		assert(is_valid(level_name), "%", level_name);
 		if exists(level_name) continue;
 
-		print("recursive world init: %\n", level_name);
 		world_init(level_name, depth+1);
 	}
 	return w;
 }
 
-
 world_deinit :: (using world : *World) {
 	level_reset(*level);
 	flags = 0;
 
-	for * actors actor_free(it);
+	for actors actor_free(it);
 }
 
 world_begin :: (world : *World) {
@@ -594,6 +530,7 @@ world_begin :: (world : *World) {
 	for * world.spawners spawn(world, it);
 }
 
+//@OPTIMIZE hash map
 get_world :: (name : string) -> *World{
 	for * worlds {
 		if !is_valid(it) continue;
@@ -648,7 +585,6 @@ print_world_map :: () {
 }
 
 // Convert a vector in the given world space
-// replacing coords_world_to_window() to accommadate new world system
 vec_world_to_window :: (world_pos : Vector2, world : *World, nests := 0.) -> Vector2 {
 	result := world_pos - world.camera.position;
 	scale := get_window_aspect_scale();
@@ -718,10 +654,6 @@ world_enter :: (a : *Actor, world : *World) {
 	// warp to the pos of target world's exit
 	pos := Vector2.{};
 	for world.actors {
-		//@CLEAN
-	//for world.actors { //@OPTIMIZE iterate on world.head/tail
-	//	if !is_valid(*it) continue;
-
 		if it.type == .WorldExit {
 			pos = it.position;
 			print("found exit position%\n", pos);
@@ -742,9 +674,7 @@ world_exit :: (a : *Actor) {
 
 	// set the focus of this exiting world
 	if has_flag(a, .Possessed) {
-		for * a.world.actors { //@OPTIMIZE iterate on world.head/tail
-			if !is_valid(it) continue;
-
+		for a.world.actors {
 			if it.type == .WorldExit {
 				a.world.focus = it;
 				break;
@@ -755,8 +685,6 @@ world_exit :: (a : *Actor) {
 	// warp to the parent entrance position
 	pos := Vector2.{};
 	for a.world.parent.actors { 
-		//if !is_valid(it) continue; @CLEAN
-
 		if it.type == .WorldEntrance && a.world == it.child_world {
 			pos = it.position;
 			break;
@@ -833,7 +761,6 @@ is_world_transitioning :: (world : *World) -> bool {
 
 // ticking the active world, not subject to nested time
 world_tick_pure :: (using world : *World, dt : float) {
-	// World transitions
 	if is_world_transitioning(world) {
 		transition_time -= dt;
 		transition_progress = 1. - (transition_time / WORLD_TRANSITION_TIME);
@@ -842,13 +769,8 @@ world_tick_pure :: (using world : *World, dt : float) {
 		return;
 	}
 
-	// actors
 	for a : actors {
-    //for i : actors_head..actors_tail { @CLEAN
-	//	a := *actors[i];
-    //	if !is_valid(a) continue;
-
-    	if a.proc_tick_pure a.proc_tick_pure(a, dt);
+    	if a.proc_tick_pure { a.proc_tick_pure(a, dt); }
     }
 
 	physics_tick(world, dt);
@@ -889,16 +811,11 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 	
 	// actor ticks
 	for a : actors {
-    //for i : actors_head..actors_tail { @CLEAN
-	//	a := *actors[i];
-    //	if !is_valid(a) continue;
-
     	if (a.proc_tick) a.proc_tick(a, dt);
 
     	if a.body.type != .Static {
  	   		a.sprite.flipped = a.direction.x < 0;
     	}
-		
 		sprite_tick(*a.sprite, dt);
     	
     	a.depth = nests;
@@ -913,6 +830,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 			}
 		}
 
+		//@CLEAN is this used anymore?
 		for child : a.children {
 			child.position = a.position;
 			child.position += child.relative_position;
@@ -926,9 +844,6 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
     }
 
     for actors {
-   // for actors { @CLEAN
-   // 	if !is_valid(*it) continue;
-
     	if it.child_world == null continue;
 
     	// passing pure_dt because we continue to do nested scaling later
@@ -946,7 +861,6 @@ WORLD_TIME_PER_CYCLE :: 10.; // for the revolving outline marker
 WORLD_TRANSITION_TIME :: 0.25; 
 WORLD_TICK_NEST_MAX :: 10.;
 WORLD_RENDER_NEST_MAX :: 4.; // max num of nested subworlds to render
-
 
 
 get_nest_scale :: (nests := 0.) -> float {
@@ -1001,10 +915,7 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 	sorted_actors : [..] *Actor;
 
 	for a : actors {
-	//for i : actors_head..actors_tail { @CLEAN
-	//	a := *actors[i];
-	//	if !is_valid(a) continue;
-//
+		//@TODO currently disabled
 		if ENABLE_FRUSTRUM_CULLING
 		{
 			//skip entities not in view
@@ -1360,7 +1271,7 @@ Actor :: struct {
 	interact_collider : Collider;
 	proc_onoverlap_interact : ActorProc_Overlap;
 
-	lifetime := -1.;
+	lifetime := -1.; //@TODO rename to "timer"
 	lifetime_dt := 0.;
 	proc_onlifetime_expired : ActorProc;
 
@@ -1522,7 +1433,6 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 	a := actor_alloc(world, spawner.type);
-	assert(is_valid(a));
 	a.sprite = get_actor_sprite(a.type);
 	a.position = spawner.position;
 	a.payload = sprint(spawner.data);
@@ -1645,7 +1555,6 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			a.proc_render = render_clock;
 			a.proc_on_interact = console_interact_a;
-			//@CLEAN a.proc_onlifetime_expired = console_deinteract;
 
 			a.proc_onlifetime_expired = (a : *Actor) {
 				console_deinteract(a);
@@ -1689,7 +1598,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			// There's (flag) LockA, which is required for the initial on_interact
 			// on_interact gives (flag) ResetsA
 			// on_hit resets active locks (.UnlocksA | .BlockInteract)
-			// removes (flag) ResetsA
+			// then removes (flag) ResetsA
 
 			a.flags |= .LockA; // needed to react to proc_on_interact
 			a.body.type = .Trigger;
@@ -1705,6 +1614,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 				//reset all A Timers (green circle)
 				//@OPTIMIZE trigger this during an on_overlap_begin event
 				for worlds {
+					if !is_valid(*it) continue;
 					for a : it.actors {
 						if a == a0 continue;
 						if has_flag(a, .UnlocksA | .BlockInteract) {
@@ -1713,6 +1623,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 					}
 				}
 				for worlds {
+					if !is_valid(*it) continue;
 					for a : it.actors {
 						if a.type == .TimerResetA {
 							a.flags &= ~.ResetsA;
@@ -1838,11 +1749,6 @@ player_tick_pure :: (a : *Actor, dt : float) {
     	else
     	{
     		for b : w.actors {
-    		//for i : w.actors_head..w.actors_tail { @CLEAN
-			//	b := *w.actors[i];
-	    	//	if !is_valid(b) continue;
-//
-				//b := it;
 	    		if a == b continue;
 	    		if b.flags & .Pickupable == 0 continue;
 	    		if !is_in_partition_range(a, b) continue;
@@ -1862,11 +1768,6 @@ player_tick_pure :: (a : *Actor, dt : float) {
 
     // find a target
     for b : w.actors {
-	//for i : w.actors_head..w.actors_tail {
-	//	b := *w.actors[i];
-	//	if !is_valid(b) continue;
-
-		//b := it;
 		if a == b continue;
 		if b.flags & .Interactable == 0 continue;
 		if b.flags & .BlockInteract != 0 continue;
@@ -1932,15 +1833,14 @@ render_clock :: (a : *Actor, nests : float, clip : Box, pos_in_window : Vector2)
 	// timer draw circle
 	//@TODO this doesn't account correctly for subworld_rendering
 	if progress > 0 {
-		//pos := vec_world_to_window(a.position, a.world, nests); @CLEAN
 		r := scalar_to_window(12) * get_nest_scale(nests);
-		c := lerp(G_GREEN2, G_RED, progress); //@CLEAN
-		//c := get_nest_color(nests); //@CLEAN
+		c := lerp(G_GREEN2, G_RED, progress);
 		draw_circle(pos_in_window, r*1.2, r*.75, G_BLACK);
 		draw_circle(pos_in_window, r, 0, c, progress);
 	}
 }
 
+//@OPTIMIZE redundant that we're storing children AND held_item
 attach :: (parent : *Actor, child : *Actor, offset := Vector2.{0,0}, keep_body_enabled := false) {
 	child.parent = parent;
 	child.relative_position = offset;
@@ -1983,7 +1883,7 @@ item_pickup :: (item : *Actor, owner : *Actor) {
 	owner.held_item = item;
 	offset := Vector2.{0., owner.body.size.y + item.body.size.y};
 	attach(owner, item, offset);
-
+	
 	if item.proc_on_pickup 
 		item.proc_on_pickup(item);
 

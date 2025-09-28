@@ -290,8 +290,7 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
 		percent_begin := 0.) 
 {
 	set_shader_for_color(true);
-	//NUM_SEGMENTS :: 16; @CLEAN temp while we debug
-	NUM_SEGMENTS :: 80;
+	NUM_SEGMENTS :: 16;
 	last_p0, last_p1: Vector2 = ---;
 
 	for i: 0..NUM_SEGMENTS - 1 {
@@ -363,9 +362,6 @@ Collider :: struct {
 	//@TODO maybe store in global map so we don't need to set this for every collider
 	is_a : ColliderMask;
 	collides_with : ColliderMask;
-
-	//@CLEAN
-	//collissions : [..] *Collider;
 }
 
 ColliderType :: enum u8 {
