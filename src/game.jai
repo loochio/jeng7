@@ -21,7 +21,7 @@ Gameplay Engine Tech Ideas
 	- gravity (maybe tie into the fluid sims, ex black hole sucking up smoke/water)
 	- audio visualization, maybe more than just visual?
 
-Need to do an Aethetic prototype.
+Need to do an Aesthetic prototype.
 
 
 27 Sept 2025 from crispy_penguin
@@ -97,8 +97,38 @@ game_begin :: () {
 		}
 	}
 
-	//play_sound(.RoundBegin);
 	print("\tInitial world activation: %\n", active_world.name);
+
+	/*
+	// print out a world mapping 
+	print_world :: (world : *World, depth := 0) {
+		if world == null return;
+		if !is_valid(world) return;
+
+		// formatting
+		d := depth;
+		while d >=0 {
+			print("-");
+			d -= 1;
+		}
+
+		print("D% %\n", depth, world.name);
+		for world.actors {
+			if it.child_world == world {
+				// formatting
+				d := depth;
+				while d >=0 {
+					print("-");
+					d -= 1;
+				}
+				print("[SELF REF]] D% %\n", depth, world.name);
+				continue;
+			}
+			print_world(it.child_world, depth+1);
+		}
+	}
+	print_world(root_world);
+	*/
 }
 
 game_end :: () {
@@ -583,6 +613,38 @@ exists :: (world_name : string) -> bool {
 		if it.name == world_name  return true;
 	}
 	return false;
+}
+
+print_world :: (world : *World, depth := 0) {
+	if world == null return;
+	if !is_valid(world) return;
+
+	// formatting
+	print_depth :: (d : s64) {
+		while d >=0 {
+			print("-");
+			d -= 1;
+		}
+	}
+	print_depth(depth);
+
+	print("D% %\n", depth, world.name);
+	for world.actors {
+		if it.child_world == world {
+			print_depth(depth);
+			print("[SELF REF]] D% %\n", depth, world.name);
+			continue;
+		}
+		print_world(it.child_world, depth+1);
+	}
+}
+
+print_world_map :: () {
+	root := active_world;
+	while root.parent != null {
+		root = root.parent;
+	}
+	print_world(root);
 }
 
 // Convert a vector in the given world space
@@ -2063,6 +2125,8 @@ register_cheats :: () {
 			}
 		}
 	});
+
+	register_cmd("map", (args: .. Any) { print_world_map(); });
 
 	/*
 	register_cmd("rseet", (args: .. Any) { 
