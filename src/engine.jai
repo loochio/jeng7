@@ -787,68 +787,6 @@ for_expansion :: (pool : *Pool, body : Code, flags : For_Flags) #expand {
 	}
 }
 
-/* pool example with prints, not sure where to put this
-pool_example :: () {
-	actors : Pool(Actor, 10);
-	print("~~~ pool init\n\n");
-	for 0..3 {
-		actor := pool_alloc(*actors);
-		actor.type = .Block;
-		actor.flags |= .Initialized;
-		print("\tnew actor=% | flags=% type=%\n", actor, actor.flags, type_of(actor));
-	}
-
-	hero := pool_alloc(*actors);
-	hero.type = .Hero;
-	hero.flags |= .Initialized;
-
-	for 0..3 {
-		actor := pool_alloc(*actors);
-		actor.type = .Block;
-		actor.flags |= .Initialized;
-		print("\tnew actor=% | flags=% type=%\n", actor, actor.flags, type_of(actor));
-	}
-	
-	print("~~~ pool contents\n\n");
-	for actors {
-		print("\tVALID % flags=%\n", it.type, it.flags);
-	}
-
-	pool_free(*actors, hero);
-
-	print("~~~ pool post free\n\n");
-	for actors {
-		print("\tVALID % flags=%\n", it.type, it.flags);
-	}
-
-	print("~~~ pool free a few\n\n");
-	count := 3;
-	for actors {
-		pool_free(*actors, it);
-		count -= 1;
-		if count <= 0 break;
-	}
-
-	print("~~~ pool contents\n\n");
-	for actors {
-		print("\tVALID % flags=%\n", it.type, it.flags);
-	}
-
-	print("~~~ pool fill \n\n");
-	for 0..4 {
-		actor := pool_alloc(*actors);
-		actor.type = .Block;
-		actor.flags |= .Initialized;
-		print("\tnew actor=% | flags=% type=%\n", actor, actor.flags, type_of(actor));
-	}
-
-	print("~~~ pool contents 2\n\n");
-	for actors {
-		print("\t% flags=%\n", it.type, it.flags);
-	}
-}
-*/
-
 
 // ~~ Particle System ~~
 // mostly copied from Invaders Jai example
@@ -1093,13 +1031,15 @@ register_cmd :: (text : string, proc : TerminalCmdProc) {
 terminal_cmds_auto_complete :: (input: string, data: *void) -> (results: [] string, longest_match_length: int) {
     results: [..] string;
     longest_match_length := 0;
-    for terminal_cmds {
-        count := begins_with_count(it.text, input);
-        if count == input.count {
-            array_add(*results, it.text);
-            longest_match_length = max(longest_match_length, input.count);
-        }
-        longest_match_length = max(longest_match_length, count);
+    #if DEVELOPER {
+    	for terminal_cmds {
+	        count := begins_with_count(it.text, input);
+	        if count == input.count {
+	            array_add(*results, it.text);
+	            longest_match_length = max(longest_match_length, input.count);
+	        }
+	        longest_match_length = max(longest_match_length, count);
+	    }
     }
     return results, longest_match_length;
 }

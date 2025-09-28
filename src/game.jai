@@ -520,6 +520,7 @@ world_deinit :: (using world : *World) {
 	level_reset(*level);
 	flags = 0;
 
+	//@OPTIMIZE this could be faster. We should just free the entire pool at once.
 	for actors actor_free(it);
 }
 
