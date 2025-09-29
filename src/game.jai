@@ -908,8 +908,12 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 	}
 
 	{ // background fill
+		pos := Vector2.{window_clip.x, window_clip.y};
+		size := Vector2.{window_clip.w, window_clip.h};
 		color := world.background_fill * get_world_color(world);
-		draw_square(.{window_clip.x, window_clip.y}, .{window_clip.w, window_clip.h}, color);
+
+		//draw_square(.{window_clip.x, window_clip.y}, .{window_clip.w, window_clip.h}, color);
+		draw_square_custom(pos, size, color, .Smoke);
 	}
 	
 	// sprite rendering, sorted by position.y

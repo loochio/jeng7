@@ -129,6 +129,7 @@ engine_init :: (cfg : EngineConfig) {
 		window_x = cfg.x, window_y = cfg.y);
 
 	set_render_target(window);
+	shader_init();
 
 	init_textures();
 	init_sprites();
@@ -151,7 +152,7 @@ engine_init :: (cfg : EngineConfig) {
 			//@TODO build define out in RELEASE builds
 			if event.type == .QUIT || is_input_pressed(.ESCAPE) {
 	            window_quit = true;
-	            return;
+	            break;
 	        }
 			getrect_handle_event(event);
 	    }
@@ -1005,6 +1006,9 @@ debug_rendering :: () {
 			}
 		}
 	}
+
+    //@CLEAN TEMP
+    shader_draw_test();
 }
 
 terminal_prompt : string;
@@ -1080,6 +1084,8 @@ register_commands :: () {
 			set_plugin(name); 
 		}
 	});
+
+	register_cmd("shader_init", (args: .. Any) { shader_init(); } );
 }
 
 
@@ -1098,3 +1104,4 @@ register_commands :: () {
 using Sound :: #import "Sound_Player";
 
 #load "assets.jai";
+#load "gfx.jai";
