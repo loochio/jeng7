@@ -46,11 +46,15 @@ shader_init :: () {
 	shader_load(*shader_custom);
 	shader_load(*shader_custom_blend);
 	shader_load(*shader_smoke);
+
+	//@TODO do a DEVELOPER check for attributes/uniform locations
+	// remove the error log spam from the rendering loop
 }
 
 shader_load :: (shader : *Shader) {
 	path := tprint("src/shaders/%", shader.filename);
 	buffer, success := read_entire_file(path);
+	defer free(buffer);
 
 	if !success {
 		print("Failed to open %\n", path);
@@ -120,18 +124,6 @@ set_attribute :: (shader: *Shader, name: *u8, value : Vector4) {
     //if loc < 0   log_error("Unknown attirbute: '%'\n", to_string(name));
     if loc >= 0  glUniform4f(loc, value.x, value.y, value.z, value.w);
 }
-
-draw_square_custom :: (pos_window : Vector2, size : Vector2, color : Vector4, type := ShaderType.Custom) {
-	set_shader(type);
-    h := Vector2.{size.x * .5, 0};
-    v := Vector2.{0, size.y * .5};
-	p0 := pos_window - h - v;
-    p1 := pos_window + h - v;
-    p2 := pos_window + h + v;
-    p3 := pos_window - h + v;
-    immediate_quad(p0, p1, p2, p3, color);
-}
-
 
 
 /* @CLEAN

@@ -457,13 +457,13 @@ World :: struct {
 	age := 0.; // relative age, factoring in time dilation
 	parent : *World;
 
+	actors : Pool(Actor, MAX_ACTORS_PER_WORLD);
+
 	transition_time := 0.;
 	transition_progress := 0.; //[0-1]
 	transition_enter := true; //@TODO move to WorldFlags
 	transition_actor : *Actor;
 	transition_world : *World;
-
-	actors : Pool(Actor, MAX_ACTORS_PER_WORLD);
 	
 	camera : Camera;
 	focus : *Actor;
@@ -519,9 +519,7 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 world_deinit :: (using world : *World) {
 	level_reset(*level);
 	flags = 0;
-
-	//@OPTIMIZE this could be faster. We should just free the entire pool at once.
-	for actors actor_free(it);
+	pool_reset(*actors);
 }
 
 world_begin :: (world : *World) {

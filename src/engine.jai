@@ -278,6 +278,17 @@ draw_square :: (pos_window : Vector2, size : Vector2, color : Vector4) {
     immediate_quad(p0, p1, p2, p3, color);
 }
 
+draw_square_custom :: (pos_window : Vector2, size : Vector2, color : Vector4, type := ShaderType.Custom) {
+	set_shader(type);
+    h := Vector2.{size.x * .5, 0};
+    v := Vector2.{0, size.y * .5};
+	p0 := pos_window - h - v;
+    p1 := pos_window + h - v;
+    p2 := pos_window + h + v;
+    p3 := pos_window - h + v;
+    immediate_quad(p0, p1, p2, p3, color);
+}
+
 draw_box :: (box : Box, color : Vector4, thickness := 2.) {
 	t := thickness;
 	draw_square(.{box.x + box.w/2, box.y}, .{t, box.h}, color);
@@ -566,6 +577,11 @@ SpriteFrame :: struct {
 	play_start : float = 0;
 }
 
+//@TODO use a Pool for Sprite allocs
+sprite_alloc :: () -> *Sprite {
+	return null;
+};
+
 //@TODO define sprite data in a SpriteAsset
 init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32}, 
 	in_tint := Vector4.{1,1,1,1}, frames := 1, play_length : float = 0, layer := 0) -> Sprite 
@@ -731,8 +747,14 @@ toggle_mute :: () {
 Pool :: struct (T : Type, size : s64) {
 	values : [size] T;
 	occupied : [size] bool;
-	head := 0;
+	head := 0; //@TODO prob remove, always keep this head at 0
 	tail := 0;
+}
+
+pool_reset :: (using pool : *Pool) {
+	tail = 0;
+	for occupied occupied[it_index] = false;
+	for values values[it_index] = .{};
 }
 
 // fast alloc, O(1) (best case) well sort of, we still do a (probably) unnecessary loop
