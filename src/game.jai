@@ -48,6 +48,7 @@ game_plugin := EnginePlugin.{
 	proc_render = game_render,
 };
 
+//@TODO read from game.ini, move to a generic config map in engine.jai
 level_root : string; 	// root level to load from
 level_start : string; 	// level the player will begin in
 
@@ -88,10 +89,8 @@ game_begin :: () {
 	assert(active_world != null);
 
 	// Possess our first available option
-	for * active_world.actors {
-		if !is_valid(it) continue;
-
-		if it.flags & .CanPossess {
+	for active_world.actors {
+		if has_flag(it, .CanPossess) {
 			possess(it);
 			break;
 		}
@@ -137,10 +136,7 @@ game_tick :: (dt : float) {
 
 	//@TODO clearing InteractTarget at the begining of the frame because we don't have
 	// an on_overlap_end type of callback yet
-	for * active_world.actors {
-		if !is_valid(it) continue;
-		it.flags &= ~.InteractTarget;
-	}
+	for active_world.actors { it.flags &= ~.InteractTarget; }
 
 	// Tick root worlds (ones without a parent)
 	// we start from the negative active world's depth, keeping our active world ticked at depth=0
@@ -432,18 +428,18 @@ game_render :: (dt : float) {
 
 	if active_sign.enabled sign_render(dt);
 
-	if debug_colliders {
-		for *a : active_world.actors {
-			if !is_valid(a) continue;
+	#if DEVELOPER {
+		if debug_colliders {
+			for a : active_world.actors {
+				// main body
+				p := vec_world_to_window(a.position, a.world);
+				size := Vector2.{scalar_to_window(a.body.size.x), scalar_to_window(a.body.size.y)};
+				draw_collider(*a.body, p, size);
 
-			// main body
-			p := vec_world_to_window(a.position, a.world);
-			size := Vector2.{scalar_to_window(a.body.size.x), scalar_to_window(a.body.size.y)};
-			draw_collider(*a.body, p, size);
-
-			// interact collider
-			sizei := Vector2.{scalar_to_window(a.interact_collider.size.x), scalar_to_window(a.interact_collider.size.y)};
-			draw_collider(*a.interact_collider, p, sizei);
+				// interact collider
+				sizei := Vector2.{scalar_to_window(a.interact_collider.size.x), scalar_to_window(a.interact_collider.size.y)};
+				draw_collider(*a.interact_collider, p, sizei);
+			}
 		}
 	}
 }
@@ -522,10 +518,9 @@ world_deinit :: (using world : *World) {
 	pool_reset(*actors);
 }
 
+// initial actor spawning
 world_begin :: (world : *World) {
 	assert(is_valid(world));
-	
-	// initial actor spawning
 	for * world.spawners spawn(world, it);
 }
 
@@ -829,7 +824,6 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 			}
 		}
 
-		//@CLEAN is this used anymore?
 		for child : a.children {
 			child.position = a.position;
 			child.position += child.relative_position;
