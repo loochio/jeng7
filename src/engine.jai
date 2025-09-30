@@ -131,6 +131,8 @@ engine_init :: (cfg : EngineConfig) {
 	set_render_target(window);
 	shader_init();
 
+	assets_init();
+	//@TODO move the below asset inits AssetManager
 	init_textures();
 	init_sprites();
 	init_sound();
@@ -222,6 +224,7 @@ engine_init :: (cfg : EngineConfig) {
 	print("Teardown ENGINE core\n");
 	sound_player_shutdown();
 	active_plugin.proc_deinit();
+	assets_reset();
 }
 
 set_plugin :: (plugin : string) {
@@ -533,6 +536,42 @@ update_mouse :: (){
 		mouse_pos_window.y = cast(float)(window_height - y); // invery mouse y to start at bottom
 	}
 }
+
+// ~~~~~~~ Asset Management ~~~~~~~ 
+
+Asset :: struct {
+	guid : s64 = 0;
+	src_path : string;
+}
+
+MAX_ASSETS :: 4096;
+assets : Pool(Asset, MAX_ASSETS);
+
+//@TODO asset_map : HashTable [GUID -> *Asset in pool]
+
+get_asset :: (guid : s64) -> *Asset {
+	//@TODO look
+	return null;
+}
+
+assets_init :: () {
+	print("Initializing Asset Management\n");
+	//@TODO load all assets
+}
+
+//@TODO create hot reload for ALL assets, or specific asset types
+
+assets_reset :: () {
+	print("Resetting Asset Management\n");
+	pool_reset(*assets);
+}
+
+asset_alloc :: () -> *Asset {
+	asset := pool_alloc(*assets);
+	assert(asset != null);
+	return asset;
+}
+
 
 // ~~~~~~~ Textures ~~~~~~~ 
 

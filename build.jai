@@ -12,6 +12,10 @@ TARGET_PLUGIN_EDITOR :: #string DONE
 default_plugin := "editor";
 DONE
 
+TARGET_PLUGIN_ASSETS :: #string DONE
+default_plugin := "assets";
+DONE
+
 DEFINE_DEVELOPER_ON :: #string DONE
 DEVELOPER :: true; 
 DONE
@@ -41,15 +45,18 @@ DONE
     for arg: args {
     	print("arg=%\n", arg);
         if arg == {
-          case "editor"; {
+          case "editor";
           	add_build_string(TARGET_PLUGIN_EDITOR, workspace);
           	print("Building for plugin: [editor]\n");
           	set_default_plugin = true;
-          }
 
-          case "release"; {
+         case "assets";
+            add_build_string(TARGET_PLUGIN_ASSETS, workspace);
+            print("Building for plugin: [assets]\n");
+            set_default_plugin = true;
+
+          case "release";
             dev_define = DEFINE_DEVELOPER_OFF;
-          }
         }
     }
 

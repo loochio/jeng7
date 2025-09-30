@@ -36,6 +36,7 @@ main :: () {
 
 	#if DEVELOPER {
 		array_add(*engine_cfg.plugins, editor_plugin);
+		array_add(*engine_cfg.plugins, asset_editor_plugin);
 	}
 	
 	engine_init(engine_cfg);
@@ -45,4 +46,5 @@ main :: () {
 
 #if DEVELOPER {
 	#load "editor.jai";
+	#load "asset_editor.jai";
 }

@@ -483,7 +483,7 @@ WorldTimeFlags :: enum_flags u8 {
 
 MAX_WORLDS :: 32; // fun fact: 128 worlds adds 1.2 sec to our total compile time (compared to 8 worlds)
 worlds : [MAX_WORLDS] World; //@TODO worlds : Pool(World, MAX_WORLDS);
-MAX_ACTORS_PER_WORLD :: 4096;
+MAX_ACTORS_PER_WORLD :: 1024;
 actor_guid := 0;
 active_world : *World;
 
