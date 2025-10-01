@@ -151,10 +151,10 @@ init_textures :: () {
 	load(.Sign, 	"sign/sign.png");
 }
 
-textures : [TextureID.COUNT] TextureAsset;
+textures : [TextureID.COUNT] _OLD_TextureAsset;
 //TEXTURE_COUNT :: #run enum_highest_value(TextureID); 
 
-get_texture :: (id : TextureID) -> *TextureAsset{
+get_texture :: (id : TextureID) -> *_OLD_TextureAsset{
 	return *textures[id];
 }
 

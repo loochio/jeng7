@@ -351,6 +351,25 @@ draw_collider :: (collider : *Collider, window_pos : Vector2, win_size : Vector2
 	}
 }
 
+draw_texture :: (texture : *Texture, window_pos : Vector2, scale := Vector2.{1,1}, outline := false) {
+	width := texture.width * scale.x;
+	height := texture.height * scale.y;
+
+	if outline {
+		draw_box(.{window_pos.x, window_pos.y, width*2., height*2.}, RED);
+	}
+
+	h := Vector2.{width, 0};
+    v := Vector2.{0, height};
+	p0 := window_pos - h - v;
+    p1 := window_pos + h - v;
+    p2 := window_pos + h + v;
+    p3 := window_pos - h + v;
+	set_shader_for_images(texture);
+    immediate_quad(p0, p1, p2, p3, WHITE);
+}
+
+
 
 // ~~~~~~~ Collision / Util ~~~~~~~ 
 
@@ -540,64 +559,233 @@ update_mouse :: (){
 // ~~~~~~~ Asset Management ~~~~~~~ 
 
 Asset :: struct {
+	VERSION :: 1;
+	type : AssetType;
 	guid : s64 = 0;
-	src_path : string;
+	name : string;
+	path : string;		//relative path of this asset
 }
 
-MAX_ASSETS :: 4096;
-assets : Pool(Asset, MAX_ASSETS);
+//@CLEAN
+//MAX_ASSETS :: 4096;
+//assets : Pool(Asset, MAX_ASSETS);
+
+AssetType :: enum u8 {
+	Texture;
+	Sprite;
+	SpriteController;
+	Sound;
+}
 
 //@TODO asset_map : HashTable [GUID -> *Asset in pool]
+//@TODO create hot reload for ALL assets, or specific asset types
+//@TODO asset_free
 
-get_asset :: (guid : s64) -> *Asset {
-	//@TODO look
-	return null;
+//get_asset :: (guid : s64) -> *Asset {
+//	//@TODO look
+//	return null;
+//}
+
+is_valid :: (asset : *Asset) -> bool {
+	return asset.name.count > 0;
 }
 
 assets_init :: () {
-	print("Initializing Asset Management\n");
-	//@TODO load all assets
+	print("Loading ALL available assets | dir=%\n", asset_path);
+	files := file_list(asset_path);
+	for files {
+		path := parse_path(it);
+		assert(path.words.count > 0);
+		filename := path.words[path.words.count-1];
+		if contains(filename, ".asset") {
+			asset_texture_load(filename);
+		}
+	}
 }
-
-//@TODO create hot reload for ALL assets, or specific asset types
 
 assets_reset :: () {
 	print("Resetting Asset Management\n");
-	pool_reset(*assets);
+	pool_reset(*texture_assets);
+	pool_reset(*sprite_assets);
 }
 
-asset_alloc :: () -> *Asset {
-	asset := pool_alloc(*assets);
-	assert(asset != null);
+//asset_alloc :: () -> *Asset {
+//	asset := pool_alloc(*assets);
+//	assert(asset != null);
+//	return asset;
+//}
+
+//asset_free :: (asset : *Asset) {
+//	//@TODO remove from pool
+//}
+
+//@TODO generalize to *Asset
+asset_rename :: (asset : *Asset, name : string) {
+	string_reset(*asset.name);
+	asset.name = sprint(name);
+	string_reset(*asset.path);
+	asset.path = sprint("%/%.asset", config.asset_folder, name);
+}
+
+asset_save :: (asset : *Asset) {
+	if asset.type== {
+		case .Texture; asset_texture_save(cast(*TextureAsset)asset);
+	}
+}
+
+
+// ~~~~~~~ Texture Assets ~~~~~~~ 
+
+TextureAsset :: struct {
+	#as using asset : Asset;
+	type = .Texture;
+
+	TEXTURE_VERSION :: 0;
+	source_path : string; 	//path to source image this asset wraps
+
+	texture : Texture;
+}
+
+MAX_TEXTURE_ASSETS :: 4096;
+texture_assets : Pool(TextureAsset, MAX_TEXTURE_ASSETS);
+
+
+load_texture :: (name : string, out : *Texture) -> bool{
+	path := tprint("%/%", img_path, name);
+	return texture_load_from_file(out, path);
+} 
+
+asset_texture_alloc :: () -> *TextureAsset {
+	return pool_alloc(*texture_assets);
+}
+
+asset_texture_save :: (asset : *TextureAsset) {
+	builder: String_Builder;
+	init_string_builder(*builder);
+
+	ver := asset.VERSION;
+	append(*builder, cast(*u8)*ver, size_of(s64));
+
+	name_len := cast(*u8)*asset.name.count;
+	append(*builder, name_len, size_of(s64));
+	append(*builder, asset.name);
+
+	src_len := cast(*u8)*asset.source_path.count;
+	append(*builder, src_len, size_of(s64));
+	append(*builder, asset.source_path);
+
+	path := tprint("%/%.asset", config.asset_folder, asset.name);
+	write_entire_file(path, *builder);
+	reset(*builder);
+	print("Saved %\n", path);
+}
+
+asset_texture_load :: (filename : string) -> *TextureAsset{
+	path := tprint("%/%", config.asset_folder, filename);
+	buffer, success := read_entire_file(path);
+
+	if !success {
+		print("Failed to load asset: %\n", path);
+		return null;
+	}
+
+	asset := asset_texture_alloc();
+
+	// version
+	VERSION := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
+	assert(VERSION == asset.VERSION);
+
+	// name
+	{
+		name_len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
+		asset.name = alloc_string(name_len);
+		consume_u8_and_length(*buffer, asset.name.data, name_len);
+
+		asset.path = sprint("%/%.asset", config.asset_folder, asset.name);
+	}
+	
+	// texture source
+	{
+		src_len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
+		asset.source_path = alloc_string(src_len);
+		consume_u8_and_length(*buffer, asset.source_path.data, src_len);
+	}
+
+	asset_texture_import(asset);
+	
+	print("\tLoaded Asset: file=% | name=%\n", filename, asset.name);
 	return asset;
 }
 
+asset_texture_import :: (asset : *TextureAsset) {
+	print("\tImporting texture: name=% src=%\n", asset.name, asset.source_path);
+	load_texture(asset.source_path, *asset.texture);
+}
 
-// ~~~~~~~ Textures ~~~~~~~ 
 
-TextureAsset :: struct {
+
+// ~~~~~~~ Sprite Assets ~~~~~~~ 
+
+SpriteAsset :: struct {
+	#as using asset : Asset;
+	type = .Sprite;
+	SPRITE_VERSION :: 0;
+
+	texture_asset_path : string; // should be a path to a T_*.asset
+	texture_asset : *TextureAsset;
+
+	frame_size := Vector2.{1,1};
+	tint := WHITE;
+	layer := 0;
+	play_length := 0.;
+	play_rate := 0.;
+	looping := true;
+	flip_x := false;
+	flip_y := false;
+
+	frame_count := 1; //@TODO should represent a grid of frames to read
+}
+
+MAX_SPRITES :: 4096;
+sprite_assets : Pool(SpriteAsset, MAX_SPRITES);
+
+asset_sprite_alloc :: () -> *SpriteAsset {
+	return pool_alloc(*sprite_assets);
+}
+
+
+
+
+
+//@CLEAN
+_OLD_TextureAsset :: struct {
 	id : s64;
 	name : string;
 	texture : Texture;
 	loaded := false;
 }
 
-load_texture :: (name : string, out : *Texture) -> bool{
-	path := tprint("%/%", img_path, name);
-	return texture_load_from_file(out, path);
-}
-
 // ~~~~~~~ sprites ~~~~~~~ 
 
 Sprite :: struct {
+	#as using asset : Asset;
+	type = .Sprite;
+	SPRITE_VERSION :: 0;
+
+	texture_asset_path : string; // should be a path to a T_*.asset
+	texture_asset : *TextureAsset;
+
+	texture : *Texture; //@TODO remove for above asset ref
+
 	initialized := false; //@TODO convert these bools to enum_flags
 	layer := 0;
 	size : Vector2;
 	offset : Vector2; // window_space
 	tint := WHITE;
 	tint_mult := WHITE;
-	texture : *Texture;
-	texture_size : Vector2;
 	frames : [..] SpriteFrame;
 	frame_current := 0;
 	play_length : float = 0;
@@ -616,11 +804,6 @@ SpriteFrame :: struct {
 	play_start : float = 0;
 }
 
-//@TODO use a Pool for Sprite allocs
-sprite_alloc :: () -> *Sprite {
-	return null;
-};
-
 //@TODO define sprite data in a SpriteAsset
 init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32}, 
 	in_tint := Vector4.{1,1,1,1}, frames := 1, play_length : float = 0, layer := 0) -> Sprite 
@@ -630,8 +813,12 @@ init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32},
 		tint = in_tint,
 		size = frame_size,
 
+		//@CLEAN
 		//@TODO we're assuming a horizontal packing of frames, will be improved with atlas parsing
-		texture_size = Vector2.{frame_size.x*frames, frame_size.y},
+		//@TODO we can read this from the actual Texture
+		//texture_size = Vector2.{frame_size.x*frames, frame_size.y},
+		
+
 		layer = layer,
 	};
 	sprite.texture = *get_texture(tid).texture;
@@ -662,8 +849,11 @@ render_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}
 	set_shader_for_images(sprite.texture);
     
     frame := sprite.frames[sprite.frame_current];
-    texW := sprite.texture_size.x;
-    texH := sprite.texture_size.y;
+
+    texW := sprite.texture.width;
+    texH := sprite.texture.height;
+    //texW := sprite.texture_size.x; //@CLEAN
+    //texH := sprite.texture_size.y;
 
     subX : float = frame.coords.x;
     subY : float = frame.coords.y;
