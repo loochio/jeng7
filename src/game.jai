@@ -808,7 +808,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
     	if (a.proc_tick) a.proc_tick(a, dt);
 
     	if a.body.type != .Static {
- 	   		a.sprite.flipped = a.direction.x < 0;
+ 	   		a.sprite.flip_x = a.direction.x < 0;
     	}
 		sprite_tick(*a.sprite, dt);
     	
@@ -918,8 +918,8 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 			//skip entities not in view
 			//@TODO prob not precise with all of sprite's variables
 			ep := vec_world_to_window(a.position, world, nests);
-			ew := a.sprite.size.x;
-			eh := a.sprite.size.y;
+			ew := a.sprite.frame_size.x;
+			eh := a.sprite.frame_size.y;
 			if ep.x < -ew || ep.x > (window_width+ew) || ep.y < -eh || ep.y > (window_height+eh) 
 				continue;
 		}
@@ -964,7 +964,7 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 		pos.y += window_height/2.;
 		pos += pos_in_window; // recursively add our pos
 
-		render_sprite(*a.sprite, pos, nscale);
+		draw_sprite(*a.sprite, pos, nscale);
 
 		if a.proc_render a.proc_render(a, n, window_clip, pos);
 	}

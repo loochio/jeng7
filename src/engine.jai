@@ -558,24 +558,34 @@ update_mouse :: (){
 
 // ~~~~~~~ Asset Management ~~~~~~~ 
 
+/*
 Asset :: struct {
 	VERSION :: 1;
 	type : AssetType;
-	guid : s64 = 0;
+	guid : s64 = 0; //@TODO don't have a need for this yet, wait until get_asset(guid) is implemnted
 	name : string;
-	path : string;		//relative path of this asset
+	path : string; //relative path of this asset
 }
 
-//@CLEAN
-//MAX_ASSETS :: 4096;
-//assets : Pool(Asset, MAX_ASSETS);
+//@TODO kind of a dirty association, but we need a byte for this type info, right? right?!
+AssetType :: enum u8 #specified {
+	Texture :: 1;
+	Sprite 	:: 2;
+	SpriteController :: 3;
 
-AssetType :: enum u8 {
-	Texture;
-	Sprite;
-	SpriteController;
-	Sound;
+	Sound :: 31;
 }
+*/
+
+MAX_ASSETS_TEXTURES :: 4096;
+MAX_ASSETS_SPRITES :: 4096;
+
+AssetManager :: struct {
+	textures : Pool(TextureAsset, MAX_ASSETS_TEXTURES);
+	sprites : Pool(Sprite, MAX_ASSETS_SPRITES);
+}
+
+assets : AssetManager;
 
 //@TODO asset_map : HashTable [GUID -> *Asset in pool]
 //@TODO create hot reload for ALL assets, or specific asset types
@@ -586,9 +596,6 @@ AssetType :: enum u8 {
 //	return null;
 //}
 
-is_valid :: (asset : *Asset) -> bool {
-	return asset.name.count > 0;
-}
 
 assets_init :: () {
 	print("Loading ALL available assets | dir=%\n", asset_path);
@@ -597,16 +604,34 @@ assets_init :: () {
 		path := parse_path(it);
 		assert(path.words.count > 0);
 		filename := path.words[path.words.count-1];
-		if contains(filename, ".asset") {
+
+		if contains(filename, TEXTURE_EXT) {
 			asset_texture_load(filename);
 		}
+
+		if contains(filename, SPRITE_EXT) {
+			sprite_load(filename);
+		}
+	}
+
+	// assets loaded, time to resolve intra-asset dependencies
+	for assets.sprites {
+		sprite_resolve(it);
 	}
 }
 
 assets_reset :: () {
 	print("Resetting Asset Management\n");
-	pool_reset(*texture_assets);
-	pool_reset(*sprite_assets);
+	pool_reset(*assets.textures);
+	pool_reset(*assets.sprites);
+}
+
+//@TODO temp returning TexutreAsset while we figure out general access pattern
+get_asset_from_name :: (name : string) -> *TextureAsset {
+	for assets.textures {
+		if it.name == name return it;
+	}
+	return null;
 }
 
 //asset_alloc :: () -> *Asset {
@@ -619,44 +644,51 @@ assets_reset :: () {
 //	//@TODO remove from pool
 //}
 
-//@TODO generalize to *Asset
-asset_rename :: (asset : *Asset, name : string) {
-	string_reset(*asset.name);
-	asset.name = sprint(name);
-	string_reset(*asset.path);
-	asset.path = sprint("%/%.asset", config.asset_folder, name);
-}
 
-asset_save :: (asset : *Asset) {
-	if asset.type== {
-		case .Texture; asset_texture_save(cast(*TextureAsset)asset);
-	}
-}
+//asset_save :: (asset : *Asset) {
+//	if asset.type== {
+//		case .Texture; asset_texture_save(cast(*TextureAsset)asset);
+//	}
+//}
+
+//@TODO generalize this for all assets
+//asset_load :: (filename : string) -> *TextureAsset{
+//	return asset_texture_load(filename);
+//}
 
 
 // ~~~~~~~ Texture Assets ~~~~~~~ 
 
 TextureAsset :: struct {
-	#as using asset : Asset;
-	type = .Texture;
+	//#as using asset : Asset; @CLEAN
+	//type = .Texture;
 
-	TEXTURE_VERSION :: 0;
-	source_path : string; 	//path to source image this asset wraps
+	VERSION :: 1;
+	name : string;
+	path : string; //relative path of this asset
+	source_path : string; //path to source image this asset wraps
 
 	texture : Texture;
 }
 
-MAX_TEXTURE_ASSETS :: 4096;
-texture_assets : Pool(TextureAsset, MAX_TEXTURE_ASSETS);
+TEXTURE_EXT :: "tasset";
 
 
-load_texture :: (name : string, out : *Texture) -> bool{
-	path := tprint("%/%", img_path, name);
-	return texture_load_from_file(out, path);
-} 
+//@CLEAN
+_OLD_TextureAsset :: struct {
+	id : s64;
+	name : string;
+	texture : Texture;
+	loaded := false;
+}
+
+
+is_valid :: (asset : *TextureAsset) -> bool {
+	return asset.name.count > 0;
+}
 
 asset_texture_alloc :: () -> *TextureAsset {
-	return pool_alloc(*texture_assets);
+	return pool_alloc(*assets.textures);
 }
 
 asset_texture_save :: (asset : *TextureAsset) {
@@ -666,6 +698,10 @@ asset_texture_save :: (asset : *TextureAsset) {
 	ver := asset.VERSION;
 	append(*builder, cast(*u8)*ver, size_of(s64));
 
+	//@CLEAN
+	//type := asset.type;
+	//append(*builder, cast(*u8)*type, size_of(AssetType));
+
 	name_len := cast(*u8)*asset.name.count;
 	append(*builder, name_len, size_of(s64));
 	append(*builder, asset.name);
@@ -674,7 +710,7 @@ asset_texture_save :: (asset : *TextureAsset) {
 	append(*builder, src_len, size_of(s64));
 	append(*builder, asset.source_path);
 
-	path := tprint("%/%.asset", config.asset_folder, asset.name);
+	path := tprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
 	write_entire_file(path, *builder);
 	reset(*builder);
 	print("Saved %\n", path);
@@ -694,7 +730,10 @@ asset_texture_load :: (filename : string) -> *TextureAsset{
 	// version
 	VERSION := 0;
 	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
-	assert(VERSION == asset.VERSION);
+	assert(VERSION == asset.VERSION, "ver=%", VERSION);
+
+	// Asset type @CLEAN
+	//consume_u8_and_length(*buffer, cast(*u8)*asset.type, size_of(AssetType));
 
 	// name
 	{
@@ -703,7 +742,7 @@ asset_texture_load :: (filename : string) -> *TextureAsset{
 		asset.name = alloc_string(name_len);
 		consume_u8_and_length(*buffer, asset.name.data, name_len);
 
-		asset.path = sprint("%/%.asset", config.asset_folder, asset.name);
+		asset.path = sprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
 	}
 	
 	// texture source
@@ -714,21 +753,33 @@ asset_texture_load :: (filename : string) -> *TextureAsset{
 		consume_u8_and_length(*buffer, asset.source_path.data, src_len);
 	}
 
-	asset_texture_import(asset);
+	asset_texture_load_from_src(asset);
 	
 	print("\tLoaded Asset: file=% | name=%\n", filename, asset.name);
 	return asset;
 }
 
-asset_texture_import :: (asset : *TextureAsset) {
-	print("\tImporting texture: name=% src=%\n", asset.name, asset.source_path);
+asset_texture_load_from_src :: (asset : *TextureAsset) {
 	load_texture(asset.source_path, *asset.texture);
+}
+
+load_texture :: (name : string, out : *Texture) -> bool{
+	path := tprint("%/%", img_path, name);
+	return texture_load_from_file(out, path);
+}
+
+asset_texture_rename :: (asset : *TextureAsset, name : string) {
+	string_reset(*asset.name);
+	asset.name = sprint(name);
+	string_reset(*asset.path);
+	asset.path = sprint("%/%.%", config.asset_folder, name, TEXTURE_EXT);
 }
 
 
 
-// ~~~~~~~ Sprite Assets ~~~~~~~ 
 
+// ~~~~~~~ Sprite Assets ~~~~~~~ 
+/* @CLEAN
 SpriteAsset :: struct {
 	#as using asset : Asset;
 	type = .Sprite;
@@ -748,53 +799,47 @@ SpriteAsset :: struct {
 
 	frame_count := 1; //@TODO should represent a grid of frames to read
 }
+*/
 
-MAX_SPRITES :: 4096;
-sprite_assets : Pool(SpriteAsset, MAX_SPRITES);
-
-asset_sprite_alloc :: () -> *SpriteAsset {
-	return pool_alloc(*sprite_assets);
-}
-
-
-
-
-
-//@CLEAN
-_OLD_TextureAsset :: struct {
-	id : s64;
-	name : string;
-	texture : Texture;
-	loaded := false;
-}
 
 // ~~~~~~~ sprites ~~~~~~~ 
 
 Sprite :: struct {
-	#as using asset : Asset;
-	type = .Sprite;
-	SPRITE_VERSION :: 0;
+	//#as using asset : Asset; @CLEAN
+	//type = .Sprite;
+	VERSION :: 1;
 
-	texture_asset_path : string; // should be a path to a T_*.asset
-	texture_asset : *TextureAsset;
+	//@TODO duplicate, can be moved to Asset struct
+	name : string;
+	path : string;
+	//ext :: SPRITE_EXT; @TODO
 
+	texture_asset_path : string; 	// serialized, should be a path to a T_*.asset
+	texture_asset : *TextureAsset;	// pointer to our texture pool
 	texture : *Texture; //@TODO remove for above asset ref
 
 	initialized := false; //@TODO convert these bools to enum_flags
 	layer := 0;
-	size : Vector2;
 	offset : Vector2; // window_space
 	tint := WHITE;
 	tint_mult := WHITE;
+
 	frames : [..] SpriteFrame;
-	frame_current := 0;
-	play_length : float = 0;
-	play_position : float = 0;
-	play_rate : float = 1.0;
-	playing := true;
+	frame_count := 1;
+	frame_size : Vector2;
+	play_length : float = 1.;
+	play_position : float = 0.;
 	loop := true;
+	default_flip_x := false;
+	default_flip_y := false;
+
+	// runtime values
+	frame_current := 0;
+	play_rate : float = 1.;
+	playing := true;
 	visible := true;
-	flipped := false;
+	flip_x := false;
+	flip_y := false;
 }
 
 SpriteFrame :: struct {
@@ -804,14 +849,143 @@ SpriteFrame :: struct {
 	play_start : float = 0;
 }
 
+SPRITE_EXT :: "sasset";
+
+sprite_alloc :: () -> *Sprite {
+	sprite := pool_alloc(*assets.sprites);
+	sprite.initialized = true;
+	return sprite;
+}
+
+sprite_free :: (sprite : *Sprite) {
+	sprite.initialized = false;
+	pool_remove(*assets.sprites, sprite);
+}
+
+is_valid :: (sprite : *Sprite) -> bool {
+	return sprite.initialized;
+}
+
+sprite_save :: (asset : *Sprite) {
+	builder: String_Builder;
+	init_string_builder(*builder);
+
+	ver := asset.VERSION;
+	append(*builder, cast(*u8)*ver, size_of(s64));
+
+	name_len := cast(*u8)*asset.name.count;
+	append(*builder, name_len, size_of(s64));
+	append(*builder, asset.name);
+
+	src_len := cast(*u8)*asset.texture_asset_path.count;
+	append(*builder, src_len, size_of(s64));
+	append(*builder, asset.texture_asset_path);
+
+	path := tprint("%/%.%", config.asset_folder, asset.name, SPRITE_EXT);
+	write_entire_file(path, *builder);
+	reset(*builder);
+	print("Saved %\n", path);
+}
+
+sprite_load :: (filename : string) -> *Sprite {
+	path := tprint("%/%", config.asset_folder, filename);
+	buffer, success := read_entire_file(path);
+
+	if !success {
+		print("Failed to load asset: %\n", path);
+		return null;
+	}
+
+	asset := sprite_alloc();
+
+	// version
+	VERSION := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
+	assert(VERSION == asset.VERSION, "ver=%", VERSION);
+
+	// name
+	{
+		name_len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
+		asset.name = alloc_string(name_len);
+		consume_u8_and_length(*buffer, asset.name.data, name_len);
+
+		asset.path = sprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
+	}
+	
+	// texture source
+	{
+		src_len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
+		asset.texture_asset_path = alloc_string(src_len);
+		consume_u8_and_length(*buffer, asset.texture_asset_path.data, src_len);
+	}
+	
+	//@TODO sprite data
+	asset.frame_count = 4;
+	asset.frame_size = .{32,32};
+	asset.play_length = 1.;
+
+	//@TODO other data
+	//asset.looping = true;
+	// looping
+	// layer <--- @TODO move to actor
+	// offset
+	// tint
+	// play_rate
+	// flip_x
+	// flip_y
+
+	print("\tLoaded Sprite: file=% | name=%\n", filename, asset.name);
+	return asset;
+}
+
+sprite_resolve :: (sprite : *Sprite) {
+	sprite.texture_asset = get_asset_from_name(sprite.texture_asset_path);
+
+	if sprite.texture_asset == null {
+		print("\tSprite texture not set yet. sprite=%\n", sprite.name);
+		return;
+	}
+	
+	sprite.texture = *sprite.texture_asset.texture;
+	assert(sprite.texture != null);
+
+	// initialize frames once we have a valid texture
+	array_reset(*sprite.frames);
+	fsize := sprite.frame_size;
+	flength := sprite.play_length / sprite.frame_count;
+	fstart := 0.;
+	for 0..sprite.frame_count-1 {
+		frame := array_add(*sprite.frames);
+		frame.index = it;
+		frame.coords = Box.{x=fsize.x*it, y=0, w=fsize.x, h=fsize.y};
+		frame.play_length = flength;
+		frame.play_start = fstart;
+		fstart += frame.play_length;
+	}
+
+	print("\tSprite resolved, sprite=% | texture=% frames=%\n", 
+		sprite.name, sprite.texture_asset.name, sprite.frames.count);
+}
+
+sprite_rename :: (sprite : *Sprite, name : string) {
+	string_reset(*sprite.name);
+	sprite.name = sprint(name);
+	string_reset(*sprite.path);
+	sprite.path = sprint("%/%.%", config.asset_folder, name, SPRITE_EXT);
+}
+
+
+
 //@TODO define sprite data in a SpriteAsset
-init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32}, 
+_OLD_init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32}, 
 	in_tint := Vector4.{1,1,1,1}, frames := 1, play_length : float = 0, layer := 0) -> Sprite 
 {
 	sprite := Sprite.{
 		initialized = true,
 		tint = in_tint,
-		size = frame_size,
+		frame_size = frame_size,
 
 		//@CLEAN
 		//@TODO we're assuming a horizontal packing of frames, will be improved with atlas parsing
@@ -821,6 +995,7 @@ init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32},
 
 		layer = layer,
 	};
+
 	sprite.texture = *get_texture(tid).texture;
 	assert(sprite.texture != null);
 
@@ -842,10 +1017,11 @@ deinit_sprite :: (sprite : *Sprite) {
 	array_reset(*sprite.frames);
 }
 
-render_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}) {
+draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}) {
 	if !sprite.initialized return;
 	if !sprite.visible return;
 
+	//@TODO point to the texture asset
 	set_shader_for_images(sprite.texture);
     
     frame := sprite.frames[sprite.frame_current];
@@ -869,9 +1045,10 @@ render_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}
     h := Vector2.{frame.coords.w * .5 * ws * scale.x * forced_window_scale_x, 0};
     v := Vector2.{0, frame.coords.h * .5 * ws * scale.y * forced_window_scale_y};
 
-    if sprite.flipped {
-    	h *= -1;
-    }
+    if sprite.default_flip_x	h *= -1;
+    if sprite.flip_x			h *= -1;
+    if sprite.default_flip_y	v *= -1;
+    if sprite.flip_y			v *= -1;
 
 	p0 := window_pos - h - v + sprite.offset;
     p1 := window_pos + h - v + sprite.offset;
@@ -1328,7 +1505,7 @@ register_commands :: () {
 		}
 	});
 
-	register_cmd("set_plugin", (args: .. Any) { 
+	register_cmd("plugin", (args: .. Any) { 
 		if args.count == 1 {
 			arg := args[0];
 			name := tprint("%", arg);

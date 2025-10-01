@@ -182,7 +182,7 @@ editor_render :: (dt : float) {
 	for editor_level.spawners {
 		sprite := get_actor_sprite(it.type);
 		pos := vec_editor_to_window(it.position);
-		render_sprite(sprite, pos, scale);
+		draw_sprite(sprite, pos, scale);
 	}
 
  	// cursor
