@@ -100,6 +100,7 @@ Camera :: struct {
 
 // Colors
 WHITE 		:: Vector4.{1,1,1,1};
+GREY 		:: Vector4.{.5,.5,.5,1};
 BLACK 		:: Vector4.{0,0,0,1};
 RED 		:: Vector4.{1,0,0,1};
 ORANGE 		:: Vector4.{1,.5,0,1};
@@ -356,11 +357,11 @@ draw_texture :: (texture : *Texture, window_pos : Vector2, scale := Vector2.{1,1
 	height := texture.height * scale.y;
 
 	if outline {
-		draw_box(.{window_pos.x, window_pos.y, width*2., height*2.}, RED);
+		draw_box(.{window_pos.x, window_pos.y, width, height}, RED);
 	}
 
-	h := Vector2.{width, 0};
-    v := Vector2.{0, height};
+	h := Vector2.{width*.5, 0};
+    v := Vector2.{0, height*.5};
 	p0 := window_pos - h - v;
     p1 := window_pos + h - v;
     p2 := window_pos + h + v;
@@ -614,6 +615,8 @@ assets_init :: () {
 		}
 	}
 
+	//@CLEAN sleep_milliseconds(5000);
+
 	// assets loaded, time to resolve intra-asset dependencies
 	for assets.sprites {
 		sprite_resolve(it);
@@ -805,8 +808,6 @@ SpriteAsset :: struct {
 // ~~~~~~~ sprites ~~~~~~~ 
 
 Sprite :: struct {
-	//#as using asset : Asset; @CLEAN
-	//type = .Sprite;
 	VERSION :: 1;
 
 	//@TODO duplicate, can be moved to Asset struct
@@ -815,31 +816,30 @@ Sprite :: struct {
 	//ext :: SPRITE_EXT; @TODO
 
 	texture_asset_path : string; 	// serialized, should be a path to a T_*.asset
-	texture_asset : *TextureAsset;	// pointer to our texture pool
-	texture : *Texture; //@TODO remove for above asset ref
-
-	initialized := false; //@TODO convert these bools to enum_flags
-	layer := 0;
-	offset : Vector2; // window_space
-	tint := WHITE;
-	tint_mult := WHITE;
-
-	frames : [..] SpriteFrame;
 	frame_count := 1;
 	frame_size : Vector2;
 	play_length : float = 1.;
-	play_position : float = 0.;
 	loop := true;
 	default_flip_x := false;
 	default_flip_y := false;
+	offset : Vector2; // window_space
+	tint := WHITE;
 
 	// runtime values
+	initialized := false; //@TODO convert these bools to enum_flags
+	resolved := false;
+	texture_asset : *TextureAsset;	// pointer to our texture pool
+	texture : *Texture; //@TODO remove for above asset ref
+
+	frames : [..] SpriteFrame;
 	frame_current := 0;
+	play_position : float = 0.;
 	play_rate : float = 1.;
 	playing := true;
 	visible := true;
 	flip_x := false;
 	flip_y := false;
+	tint_mult := WHITE; //@TODO come back to this to make sure we're setting the right value
 }
 
 SpriteFrame :: struct {
@@ -872,6 +872,14 @@ sprite_save :: (asset : *Sprite) {
 
 	ver := asset.VERSION;
 	append(*builder, cast(*u8)*ver, size_of(s64));
+	append(*builder, cast(*u8)*asset.frame_count, size_of(s64));
+	append(*builder, cast(*u8)*asset.frame_size, size_of(Vector2));
+	append(*builder, cast(*u8)*asset.play_length, size_of(float));
+	append(*builder, cast(*u8)*asset.offset, size_of(Vector2));
+	append(*builder, cast(*u8)*asset.tint, size_of(Vector4));
+	append(*builder, cast(*u8)*asset.loop, size_of(u8));
+	append(*builder, cast(*u8)*asset.default_flip_x, size_of(u8));
+	append(*builder, cast(*u8)*asset.default_flip_y, size_of(u8));
 
 	name_len := cast(*u8)*asset.name.count;
 	append(*builder, name_len, size_of(s64));
@@ -881,6 +889,7 @@ sprite_save :: (asset : *Sprite) {
 	append(*builder, src_len, size_of(s64));
 	append(*builder, asset.texture_asset_path);
 
+	// write the final file
 	path := tprint("%/%.%", config.asset_folder, asset.name, SPRITE_EXT);
 	write_entire_file(path, *builder);
 	reset(*builder);
@@ -903,38 +912,27 @@ sprite_load :: (filename : string) -> *Sprite {
 	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
 	assert(VERSION == asset.VERSION, "ver=%", VERSION);
 
+	consume_u8_and_length(*buffer, cast(*u8)*asset.frame_count, size_of(s64));
+	consume_u8_and_length(*buffer, cast(*u8)*asset.frame_size, size_of(Vector2));
+	consume_u8_and_length(*buffer, cast(*u8)*asset.play_length, size_of(float));
+	consume_u8_and_length(*buffer, cast(*u8)*asset.offset, size_of(Vector2));
+	consume_u8_and_length(*buffer, cast(*u8)*asset.tint, size_of(Vector4));
+	consume_u8_and_length(*buffer, cast(*u8)*asset.loop, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*asset.default_flip_x, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*asset.default_flip_y, size_of(u8));
+	
 	// name
-	{
-		name_len := 0;
-		consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
-		asset.name = alloc_string(name_len);
-		consume_u8_and_length(*buffer, asset.name.data, name_len);
-
-		asset.path = sprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
-	}
+	name_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
+	asset.name = alloc_string(name_len);
+	consume_u8_and_length(*buffer, asset.name.data, name_len);
+	asset.path = sprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
 	
 	// texture source
-	{
-		src_len := 0;
-		consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
-		asset.texture_asset_path = alloc_string(src_len);
-		consume_u8_and_length(*buffer, asset.texture_asset_path.data, src_len);
-	}
-	
-	//@TODO sprite data
-	asset.frame_count = 4;
-	asset.frame_size = .{32,32};
-	asset.play_length = 1.;
-
-	//@TODO other data
-	//asset.looping = true;
-	// looping
-	// layer <--- @TODO move to actor
-	// offset
-	// tint
-	// play_rate
-	// flip_x
-	// flip_y
+	src_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
+	asset.texture_asset_path = alloc_string(src_len);
+	consume_u8_and_length(*buffer, asset.texture_asset_path.data, src_len);
 
 	print("\tLoaded Sprite: file=% | name=%\n", filename, asset.name);
 	return asset;
@@ -952,7 +950,9 @@ sprite_resolve :: (sprite : *Sprite) {
 	assert(sprite.texture != null);
 
 	// initialize frames once we have a valid texture
-	array_reset(*sprite.frames);
+	if sprite.frames.count > 0 
+		array_reset(*sprite.frames);
+
 	fsize := sprite.frame_size;
 	flength := sprite.play_length / sprite.frame_count;
 	fstart := 0.;
@@ -964,6 +964,8 @@ sprite_resolve :: (sprite : *Sprite) {
 		frame.play_start = fstart;
 		fstart += frame.play_length;
 	}
+
+	sprite.resolved = true;
 
 	print("\tSprite resolved, sprite=% | texture=% frames=%\n", 
 		sprite.name, sprite.texture_asset.name, sprite.frames.count);
@@ -980,7 +982,7 @@ sprite_rename :: (sprite : *Sprite, name : string) {
 
 //@TODO define sprite data in a SpriteAsset
 _OLD_init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32}, 
-	in_tint := Vector4.{1,1,1,1}, frames := 1, play_length : float = 0, layer := 0) -> Sprite 
+	in_tint := Vector4.{1,1,1,1}, frames := 1, play_length : float = 0) -> Sprite 
 {
 	sprite := Sprite.{
 		initialized = true,
@@ -993,7 +995,7 @@ _OLD_init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32},
 		//texture_size = Vector2.{frame_size.x*frames, frame_size.y},
 		
 
-		layer = layer,
+		//layer = layer, @CLEAN
 	};
 
 	sprite.texture = *get_texture(tid).texture;
@@ -1028,8 +1030,6 @@ draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}) 
 
     texW := sprite.texture.width;
     texH := sprite.texture.height;
-    //texW := sprite.texture_size.x; //@CLEAN
-    //texH := sprite.texture_size.y;
 
     subX : float = frame.coords.x;
     subY : float = frame.coords.y;
@@ -1074,6 +1074,7 @@ sprite_step :: (sprite : *Sprite) {
 
 sprite_tick :: (sprite : *Sprite, dt : float) {
 	if !sprite.initialized return;
+	if !sprite.resolved return;
 	if !sprite.playing return;
 
 	sprite.play_position += (dt * sprite.play_rate);
@@ -1382,30 +1383,32 @@ update_ui_hit :: (r : *Rect) {
 	ui_hit_this_frame |= is_inside(mouse_pos_window.x, mouse_pos_window.y, r);
 }
 
-//@TODO RectLayouts
+// RectLayouts
 
 Layout :: struct {
-
+	root : Rect;
 }
 
 VerticalLayout :: struct {
-	root : Rect;
+	#as using layout : Layout;
 	line := 0;
 }
 
-HorizontalLayout :: struct {
+HorizontalLayout :: struct {}
 
-}
-
-GridLayout :: struct {
-
-}
+GridLayout :: struct {}
 
 next :: (layout : *VerticalLayout) -> Rect {
-	line += 1;
+	layout.line += 1;
 
 	return Rect.{};
 }
+
+//button :: (layout : *Layout, text : string) -> bool {
+//	r := next(layout);
+//	return button(r, text, *hud_theme.button_theme);
+//}
+
 
 // Moving this out of the main loop for readability
 debug_rendering :: () {
@@ -1536,6 +1539,11 @@ register_commands :: () {
 	});
 
 	register_cmd("shader_init", (args: .. Any) { shader_init(); } );
+
+	register_cmd("assets_reload", (args: .. Any) { 
+		assets_reset();
+		assets_init();
+	});
 }
 
 

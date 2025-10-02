@@ -12,11 +12,11 @@ This was due to several cases of double freeing memory. woops
 
 engine_cfg := EngineConfig.{
 	name = "Game F",
-	world_width = 640,
-	world_height = 480,
+	world_width = 1920,//640,
+	world_height = 1080,//480,
 	window_width = 1920,
 	window_height = 1080,
-	aspect = 640. / 480.,
+	aspect = 1920./1080.,//640. / 480.,
 	x = 300,
 	y = 100,
 	bg_color = G_GREY4,

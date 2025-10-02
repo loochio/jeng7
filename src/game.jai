@@ -926,11 +926,11 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 		
 		idx := 0;
 		for sorted_actors {
-			if a.sprite.layer > it.sprite.layer {
+			if a.layer > it.layer {
 				idx += 1;
 				continue;
 			}
-			if a.sprite.layer < it.sprite.layer {
+			if a.layer < it.layer {
 				break;
 			}
 			// factor in relative offset if attached to parent
@@ -1249,6 +1249,7 @@ Actor :: struct {
 	proc_on_pickup : ActorProc;
 
 	sprite : Sprite;
+	layer := 0;
 
 	position : Vector2;
 	prev_position : Vector2;
@@ -1334,6 +1335,7 @@ has_flag :: (a: *Actor, flag : ActorFlags) -> bool {
 	return a.flags & flag != 0;
 }
 
+//@CLEAN remove
 get_actor_tid :: (type : ActorType) -> TextureID {
 	if type== {
 		case .Hero; 			return TextureID.Hero;
@@ -1364,6 +1366,15 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 }
 
 get_actor_sprite :: (type : ActorType) -> *Sprite {
+	case type== {
+		case .Hero; return null;
+		case .HeroRed; return null;
+		case .Kid; return null;
+
+		case .WorldEntrance; return null;
+		case .WorldExit; return null;
+	}
+
 	tid := get_actor_tid(type);
 	return get_sprite(tid);
 }
@@ -1532,6 +1543,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.collides_with = .Pawn | .Wall;
 
 			sprite_pause(*a.sprite);
+			a.layer = -50;
 
 			a.proc_render = render_clock;
 			a.proc_on_interact = console_interact_a;
@@ -1549,6 +1561,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.collides_with = .Pawn | .Wall;
 
 			sprite_pause(*a.sprite);
+			a.layer = -50;
 
 			a.proc_render = render_clock;
 			a.proc_on_interact = console_interact_a;
@@ -1573,6 +1586,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			}
 
 			sprite_pause(*a.sprite);
+			a.layer = -50;
 		}
 
 		case .DropZone; {
@@ -1581,6 +1595,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn;
+			a.layer = -100;
 
 			a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
 				if is_holding_item(a1) {
@@ -1604,6 +1619,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Pawn;
 			sprite_pause(*a.sprite);
+			a.layer = -100;
 
 			a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
 				if !has_flag(a0, .ResetsA) return;
@@ -1679,6 +1695,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.body.size = .{32,32};
 			a.body.is_a = .Wall;
 			a.body.collides_with = .Hero;
+			a.layer = -25;
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
 				sign_show(a.payload);

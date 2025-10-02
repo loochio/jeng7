@@ -173,16 +173,16 @@ init_sprites :: () {
 
 	_OLD_sprites[TextureID.Entrance] = _OLD_init_sprite(.Entrance);
 	_OLD_sprites[TextureID.Exit] 	= _OLD_init_sprite(.Exit, frames=4, play_length=1);
-	_OLD_sprites[TextureID.ExitOutline] 	= _OLD_init_sprite(.Exit, layer=-1);
+	_OLD_sprites[TextureID.ExitOutline] 	= _OLD_init_sprite(.Exit);
 
-	_OLD_sprites[TextureID.ButtonA] 	= _OLD_init_sprite(.ButtonA, frames=2, layer=-50);
+	_OLD_sprites[TextureID.ButtonA] 	= _OLD_init_sprite(.ButtonA, frames=2);
 	_OLD_sprites[TextureID.ButtonPickupA] = _OLD_init_sprite(.ButtonPickupA, frames=2);
-	_OLD_sprites[TextureID.LockA] 	= _OLD_init_sprite(.LockA, frames=2, layer=-50);
-	_OLD_sprites[TextureID.LockBig] 	= _OLD_init_sprite(.LockBig, frames=4, layer=-50, frame_size=.{64,64});
-	_OLD_sprites[TextureID.TimerResetA] = _OLD_init_sprite(.TimerResetA, frames=2, layer=-100);
+	_OLD_sprites[TextureID.LockA] 	= _OLD_init_sprite(.LockA, frames=2);
+	_OLD_sprites[TextureID.LockBig] 	= _OLD_init_sprite(.LockBig, frames=4, frame_size=.{64,64});
+	_OLD_sprites[TextureID.TimerResetA] = _OLD_init_sprite(.TimerResetA, frames=2);
 
 
-	_OLD_sprites[TextureID.DropZone] = _OLD_init_sprite(.DropZone, layer=-100);
+	_OLD_sprites[TextureID.DropZone] = _OLD_init_sprite(.DropZone);
 
 
 	_OLD_sprites[TextureID.Sign] = _OLD_init_sprite(.Sign);
@@ -196,11 +196,11 @@ init_sprites :: () {
 	_OLD_sprites[TextureID.Obsidian] = _OLD_init_sprite(.Obsidian);
 	_OLD_sprites[TextureID.Bush] 	= _OLD_init_sprite(.Bush);
 	_OLD_sprites[TextureID.ManaGem] 	= _OLD_init_sprite(.ManaGem, frames=4, play_length=.25);
-	_OLD_sprites[TextureID.Marker] 	= _OLD_init_sprite(.Marker, frames=3, play_length=0.5, layer=200);
+	_OLD_sprites[TextureID.Marker] 	= _OLD_init_sprite(.Marker, frames=3, play_length=0.5);
 	_OLD_sprites[TextureID.Pebble] 	= _OLD_init_sprite(.Pebble);
 
-	_OLD_sprites[TextureID.Tile_01] 	= _OLD_init_sprite(.Tile_01, layer=-100);
-	_OLD_sprites[TextureID.Tile_Magma] = _OLD_init_sprite(.Tile_Magma, frames=4, play_length=1, layer=-100);
+	_OLD_sprites[TextureID.Tile_01] 	= _OLD_init_sprite(.Tile_01);
+	_OLD_sprites[TextureID.Tile_Magma] = _OLD_init_sprite(.Tile_Magma, frames=4, play_length=1);
 }
 
 get_sprite :: (tid : TextureID) -> *Sprite {

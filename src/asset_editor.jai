@@ -490,31 +490,14 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 		line += 1;
 	}
 
-
-	//{
-	//	r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
-	//	text := tprint("Flip Y: %", sprite_asset.flip_y);
-	//	label(r0, text, label_theme);
-	//	line += 1;
-	//}
-
-	//@CLEAN sprite params
-	// frames
-	// looping
-	// layer
-	// offset
-	// tint
-	// play_length
-	// play_rate
-	// flip_x
-	// flip_y
-
 	// draw texture and sprite
 	if sprite_asset.texture_asset != null {
 		rview := Rect.{r.x+rd.w, r.y, r.w-rd.w, r.h};
 		pos := Vector2.{rview.x+rview.w/2., rview.y+rview.h*0.8};
 		draw_texture(*sprite_asset.texture_asset.texture, pos, scale=.{1,1}, outline=true);
 
-		draw_sprite(sprite_asset, .{pos.x, pos.y-200});
+		spos := Vector2.{pos.x, pos.y-200};
+		draw_square(spos, sprite_asset.frame_size, GREY);
+		draw_sprite(sprite_asset, spos);
 	}
 }
