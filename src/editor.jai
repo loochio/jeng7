@@ -180,7 +180,7 @@ editor_render :: (dt : float) {
 
 	// draw spawners
 	for editor_level.spawners {
-		sprite := get_actor_sprite(it.type);
+		sprite := _OLD_get_actor_sprite(it.type);
 		pos := vec_editor_to_window(it.position);
 		draw_sprite(sprite, pos, scale);
 	}
@@ -552,9 +552,8 @@ tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: 
 		if !is_valid_actor_spawner(type) continue;
 
 		//@TODO render this button with the sprite
-    	//sprite := get_actor_sprite(it.type);
-    	textureid := get_actor_tid(type);
-    	tex := *get_texture(textureid).texture;
+    	textureid := _OLD_get_actor_tid(type);
+    	tex := *_OLD_get_texture(textureid).texture;
     	assert(tex != null);
 
     	rbtn := Rect.{0,0, AB,AB};

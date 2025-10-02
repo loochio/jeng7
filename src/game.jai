@@ -1230,6 +1230,9 @@ is_valid :: (level : *Level) -> bool {
 
 // ~~~ Actors ~~~
 
+//@TODO likely need an ActorDefinition struct or collection
+// spawn(ActorType) is starting to fall over
+
 Actor :: struct {
 	id := 0;
 	type := ActorType.EMPTY;
@@ -1248,6 +1251,7 @@ Actor :: struct {
 	proc_on_dropped : ActorProc;
 	proc_on_pickup : ActorProc;
 
+	sprite_guid : string; // links to a Sprite asset
 	sprite : Sprite;
 	layer := 0;
 
@@ -1336,7 +1340,7 @@ has_flag :: (a: *Actor, flag : ActorFlags) -> bool {
 }
 
 //@CLEAN remove
-get_actor_tid :: (type : ActorType) -> TextureID {
+_OLD_get_actor_tid :: (type : ActorType) -> TextureID {
 	if type== {
 		case .Hero; 			return TextureID.Hero;
 		case .HeroRed; 			return TextureID.HeroRed;
@@ -1365,18 +1369,33 @@ get_actor_tid :: (type : ActorType) -> TextureID {
 	return .COUNT;
 }
 
-get_actor_sprite :: (type : ActorType) -> *Sprite {
-	case type== {
-		case .Hero; return null;
-		case .HeroRed; return null;
-		case .Kid; return null;
+_OLD_get_actor_sprite :: (type : ActorType) -> *Sprite {
+	//case type== { @CLEAN
+	//	case .Hero; return null;
+	//	case .HeroRed; return null;
+	//	case .Kid; return null;
+//
+	//	case .WorldEntrance; return null;
+	//	case .WorldExit; return null;
+	//}
 
-		case .WorldEntrance; return null;
-		case .WorldExit; return null;
+	tid := _OLD_get_actor_tid(type);
+	return _OLD_get_sprite(tid);
+}
+
+get_sprite :: (type : ActorType) -> *Sprite {
+	if type== {
+		case .Hero; 		return get_sprite("S_hero");
+		case .HeroRed; 		return get_sprite("S_hero_red");
+		case .Kid; 			return get_sprite("S_bug");
+
+		case .WorldEntrance; return get_sprite("S_world_entrance");
+		case .WorldExit; 	return get_sprite("S_world_exit");
 	}
 
-	tid := get_actor_tid(type);
-	return get_sprite(tid);
+	old := _OLD_get_actor_sprite(type);
+	assert(old != null, "sprite not found, ActorType=%", type);
+	return old;
 }
 
 
@@ -1441,7 +1460,7 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 
 spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 	a := actor_alloc(world, spawner.type);
-	a.sprite = get_actor_sprite(a.type);
+	a.sprite = get_sprite(a.type);
 	a.position = spawner.position;
 	a.payload = sprint(spawner.data);
 	
@@ -1449,6 +1468,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .Hero; #through;
 		case .HeroRed;
 		{
+			//a.sprite_guid = "T_hero"; @CLEAN
 			a.flags |= .CanPossess | .Interactable | .Pickupable;
 			a.speed = HERO_SPEED_DEFAULT;
 			a.body.type = .Dynamic;
@@ -1471,6 +1491,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		}
 
 		case .Kid; {
+			//a.sprite_guid =  @CLEAN
 			a.flags |= .Pickupable;
 			a.body.type = .Dynamic;
 			a.body.size = .{12,12};

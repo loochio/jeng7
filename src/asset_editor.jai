@@ -36,7 +36,7 @@ asset_editor_new :: (type : AssetType) {
 
 	if type=={
 		case .Texture; 
-			texture_asset = asset_texture_alloc();
+			texture_asset = texture_alloc();
 
 		case .Sprite; 
 			sprite_asset = sprite_alloc();
@@ -129,12 +129,12 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	theme := *hud_theme.button_theme;
 	theme.alignment = .Left;
 	
-	for asset : assets.textures {
+	for tx : assets.textures {
 		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, asset.name, theme, identifier=line) { 
-			texture_asset = asset;
+		if button(r0, tx.guid, theme, identifier=line) { 
+			texture_asset = tx;
 			edit_type = .Texture;
-			print("Editting Asset: %\n", asset.name);
+			print("Editting Asset: GUID=%\n", tx.guid);
 		}
 		line += 1;
 	}
@@ -154,10 +154,10 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	for 0..10 {
 		for asset : assets.textures {
 			r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-			if button(r0, asset.name, theme, identifier=line) { 
+			if button(r0, asset.guid, theme, identifier=line) { 
 				texture_asset = asset;
 				edit_type = .Texture;
-				print("Editting Asset: %\n", asset.name);
+				print("Editting Asset: GUID=%\n", asset.guid);
 			}
 			line += 1;
 		}
@@ -199,21 +199,21 @@ render_subwindow_view_texture :: (state: *Subwindow_State, r: Rect, data: *void)
 	{ // save
 		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
 		if button(r0, "Save", btn_theme) { 
-			asset_texture_save(texture_asset);
+			texture_save(texture_asset);
 		}
 		line += 1;
 	}
 
 	{
 		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "Name", label_theme);
+		label(r0, "GUID", label_theme);
 
 		r1 := r0;
 		r1.x = rd.x+r0.w;
 		r1.w = rd.w*0.75;
-		action, text, state := text_input(r1, texture_asset.name, *text_theme);
+		action, text, state := text_input(r1, texture_asset.guid, *text_theme);
 		if action & .ENTERED {
-			asset_texture_rename(texture_asset, text);
+			texture_rename(texture_asset, text);
 		}
 		line += 1;
 	}
@@ -225,7 +225,7 @@ render_subwindow_view_texture :: (state: *Subwindow_State, r: Rect, data: *void)
 		r1 := r0;
 		r1.x = rd.x+r0.w;
 		r1.w = rd.w*0.75;
-		label(r1, texture_asset.name, label_theme);
+		label(r1, texture_asset.guid, label_theme);
 
 		line += 1;
 	}
@@ -253,7 +253,7 @@ render_subwindow_view_texture :: (state: *Subwindow_State, r: Rect, data: *void)
 		if action & .ENTERED {
 			string_reset(*texture_asset.source_path);
 			texture_asset.source_path = sprint(text);
-			asset_texture_load_from_src(texture_asset);
+			texture_load_from_src(texture_asset);
 		}
 		line += 1;
 	}
@@ -362,14 +362,14 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 
 	{
 		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "Texture Asset:", label_theme);
+		label(r0, "Texture GUID:", label_theme);
 		r1 := r0;
 		r1.x = rd.x+r0.w;
 		r1.w = rd.w*0.75;
-		action, text, state := text_input(r1, sprite_asset.texture_asset_path, *text_theme);
+		action, text, state := text_input(r1, sprite_asset.texture_guid, *text_theme);
 		if action & .ENTERED {
-			string_reset(*sprite_asset.texture_asset_path);
-			sprite_asset.texture_asset_path = sprint(text);
+			string_reset(*sprite_asset.texture_guid);
+			sprite_asset.texture_guid = sprint(text);
 			sprite_resolve(sprite_asset);
 		}
 		line += 1;

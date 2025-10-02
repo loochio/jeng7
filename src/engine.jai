@@ -559,47 +559,24 @@ update_mouse :: (){
 
 // ~~~~~~~ Asset Management ~~~~~~~ 
 
-/*
-Asset :: struct {
-	VERSION :: 1;
-	type : AssetType;
-	guid : s64 = 0; //@TODO don't have a need for this yet, wait until get_asset(guid) is implemnted
-	name : string;
-	path : string; //relative path of this asset
-}
-
-//@TODO kind of a dirty association, but we need a byte for this type info, right? right?!
-AssetType :: enum u8 #specified {
-	Texture :: 1;
-	Sprite 	:: 2;
-	SpriteController :: 3;
-
-	Sound :: 31;
-}
-*/
-
 MAX_ASSETS_TEXTURES :: 4096;
 MAX_ASSETS_SPRITES :: 4096;
 
 AssetManager :: struct {
-	textures : Pool(TextureAsset, MAX_ASSETS_TEXTURES);
+	//@TODO do we get rid of the Pool since we have this Table now?
+	textures : Pool(TextureAsset, MAX_ASSETS_TEXTURES); 
+	texture_table : Table(string, *TextureAsset);
+
 	sprites : Pool(Sprite, MAX_ASSETS_SPRITES);
 }
 
 assets : AssetManager;
 
-//@TODO asset_map : HashTable [GUID -> *Asset in pool]
-//@TODO create hot reload for ALL assets, or specific asset types
-//@TODO asset_free
-
-//get_asset :: (guid : s64) -> *Asset {
-//	//@TODO look
-//	return null;
-//}
-
-
 assets_init :: () {
 	print("Loading ALL available assets | dir=%\n", asset_path);
+
+	init(*assets.texture_table, MAX_ASSETS_TEXTURES);
+
 	files := file_list(asset_path);
 	for files {
 		path := parse_path(it);
@@ -607,15 +584,13 @@ assets_init :: () {
 		filename := path.words[path.words.count-1];
 
 		if contains(filename, TEXTURE_EXT) {
-			asset_texture_load(filename);
+			texture_load(filename);
 		}
 
 		if contains(filename, SPRITE_EXT) {
 			sprite_load(filename);
 		}
 	}
-
-	//@CLEAN sleep_milliseconds(5000);
 
 	// assets loaded, time to resolve intra-asset dependencies
 	for assets.sprites {
@@ -627,47 +602,16 @@ assets_reset :: () {
 	print("Resetting Asset Management\n");
 	pool_reset(*assets.textures);
 	pool_reset(*assets.sprites);
+
+	table_reset(*assets.texture_table);
 }
-
-//@TODO temp returning TexutreAsset while we figure out general access pattern
-get_asset_from_name :: (name : string) -> *TextureAsset {
-	for assets.textures {
-		if it.name == name return it;
-	}
-	return null;
-}
-
-//asset_alloc :: () -> *Asset {
-//	asset := pool_alloc(*assets);
-//	assert(asset != null);
-//	return asset;
-//}
-
-//asset_free :: (asset : *Asset) {
-//	//@TODO remove from pool
-//}
-
-
-//asset_save :: (asset : *Asset) {
-//	if asset.type== {
-//		case .Texture; asset_texture_save(cast(*TextureAsset)asset);
-//	}
-//}
-
-//@TODO generalize this for all assets
-//asset_load :: (filename : string) -> *TextureAsset{
-//	return asset_texture_load(filename);
-//}
 
 
 // ~~~~~~~ Texture Assets ~~~~~~~ 
 
 TextureAsset :: struct {
-	//#as using asset : Asset; @CLEAN
-	//type = .Texture;
-
 	VERSION :: 1;
-	name : string;
+	guid : string;
 	path : string; //relative path of this asset
 	source_path : string; //path to source image this asset wraps
 
@@ -686,40 +630,42 @@ _OLD_TextureAsset :: struct {
 }
 
 
-is_valid :: (asset : *TextureAsset) -> bool {
-	return asset.name.count > 0;
+is_valid :: (tx : *TextureAsset) -> bool {
+	return is_valid(tx.guid);
 }
 
-asset_texture_alloc :: () -> *TextureAsset {
+get_texture :: (guid : string) -> *TextureAsset {
+	success, result := table_find_new(*assets.texture_table, guid);
+	assert(success, "%", guid);
+	return result;
+}
+
+texture_alloc :: () -> *TextureAsset {
 	return pool_alloc(*assets.textures);
 }
 
-asset_texture_save :: (asset : *TextureAsset) {
+texture_save :: (tx : *TextureAsset) {
 	builder: String_Builder;
 	init_string_builder(*builder);
 
-	ver := asset.VERSION;
+	ver := tx.VERSION;
 	append(*builder, cast(*u8)*ver, size_of(s64));
 
-	//@CLEAN
-	//type := asset.type;
-	//append(*builder, cast(*u8)*type, size_of(AssetType));
+	guid_len := cast(*u8)*tx.guid.count;
+	append(*builder, guid_len, size_of(s64));
+	append(*builder, tx.guid);
 
-	name_len := cast(*u8)*asset.name.count;
-	append(*builder, name_len, size_of(s64));
-	append(*builder, asset.name);
-
-	src_len := cast(*u8)*asset.source_path.count;
+	src_len := cast(*u8)*tx.source_path.count;
 	append(*builder, src_len, size_of(s64));
-	append(*builder, asset.source_path);
+	append(*builder, tx.source_path);
 
-	path := tprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
+	path := tprint("%/%.%", config.asset_folder, tx.guid, TEXTURE_EXT);
 	write_entire_file(path, *builder);
 	reset(*builder);
 	print("Saved %\n", path);
 }
 
-asset_texture_load :: (filename : string) -> *TextureAsset{
+texture_load :: (filename : string) -> *TextureAsset{
 	path := tprint("%/%", config.asset_folder, filename);
 	buffer, success := read_entire_file(path);
 
@@ -728,84 +674,58 @@ asset_texture_load :: (filename : string) -> *TextureAsset{
 		return null;
 	}
 
-	asset := asset_texture_alloc();
+	tx := texture_alloc();
 
 	// version
 	VERSION := 0;
 	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
-	assert(VERSION == asset.VERSION, "ver=%", VERSION);
+	assert(VERSION == tx.VERSION, "ver=%", VERSION);
 
-	// Asset type @CLEAN
-	//consume_u8_and_length(*buffer, cast(*u8)*asset.type, size_of(AssetType));
-
-	// name
+	// guid
 	{
-		name_len := 0;
-		consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
-		asset.name = alloc_string(name_len);
-		consume_u8_and_length(*buffer, asset.name.data, name_len);
+		guid_len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*guid_len, size_of(s64));
+		tx.guid = alloc_string(guid_len);
+		consume_u8_and_length(*buffer, tx.guid.data, guid_len);
 
-		asset.path = sprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
+		tx.path = sprint("%/%.%", config.asset_folder, tx.guid, TEXTURE_EXT);
 	}
 	
 	// texture source
 	{
 		src_len := 0;
 		consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
-		asset.source_path = alloc_string(src_len);
-		consume_u8_and_length(*buffer, asset.source_path.data, src_len);
+		tx.source_path = alloc_string(src_len);
+		consume_u8_and_length(*buffer, tx.source_path.data, src_len);
 	}
 
-	asset_texture_load_from_src(asset);
+	texture_load_from_src(tx);
 	
-	print("\tLoaded Asset: file=% | name=%\n", filename, asset.name);
-	return asset;
+	assert(!table_contains(*assets.texture_table, tx.guid), "%", tx.guid);
+	table_set(*assets.texture_table, tx.guid, tx);
+
+	print("\tLoaded Texture: file=% | GUID=%\n", filename, tx.guid);
+	return tx;
 }
 
-asset_texture_load_from_src :: (asset : *TextureAsset) {
-	load_texture(asset.source_path, *asset.texture);
+texture_load_from_src :: (tx : *TextureAsset) {
+	load_raw_texture(tx.source_path, *tx.texture);
 }
 
-load_texture :: (name : string, out : *Texture) -> bool{
+load_raw_texture :: (name : string, out : *Texture) -> bool{
 	path := tprint("%/%", img_path, name);
 	return texture_load_from_file(out, path);
 }
 
-asset_texture_rename :: (asset : *TextureAsset, name : string) {
-	string_reset(*asset.name);
-	asset.name = sprint(name);
-	string_reset(*asset.path);
-	asset.path = sprint("%/%.%", config.asset_folder, name, TEXTURE_EXT);
+texture_rename :: (tx : *TextureAsset, guid : string) {
+	string_reset(*tx.guid);
+	tx.guid = sprint(guid);
+	string_reset(*tx.path);
+	tx.path = sprint("%/%.%", config.asset_folder, guid, TEXTURE_EXT);
 }
 
 
-
-
-// ~~~~~~~ Sprite Assets ~~~~~~~ 
-/* @CLEAN
-SpriteAsset :: struct {
-	#as using asset : Asset;
-	type = .Sprite;
-	SPRITE_VERSION :: 0;
-
-	texture_asset_path : string; // should be a path to a T_*.asset
-	texture_asset : *TextureAsset;
-
-	frame_size := Vector2.{1,1};
-	tint := WHITE;
-	layer := 0;
-	play_length := 0.;
-	play_rate := 0.;
-	looping := true;
-	flip_x := false;
-	flip_y := false;
-
-	frame_count := 1; //@TODO should represent a grid of frames to read
-}
-*/
-
-
-// ~~~~~~~ sprites ~~~~~~~ 
+// ~~~~~~~ Sprites ~~~~~~~ 
 
 Sprite :: struct {
 	VERSION :: 1;
@@ -813,9 +733,8 @@ Sprite :: struct {
 	//@TODO duplicate, can be moved to Asset struct
 	name : string;
 	path : string;
-	//ext :: SPRITE_EXT; @TODO
 
-	texture_asset_path : string; 	// serialized, should be a path to a T_*.asset
+	texture_guid : string; 	// serialized, should be a T_* string
 	frame_count := 1;
 	frame_size : Vector2;
 	play_length : float = 1.;
@@ -866,6 +785,15 @@ is_valid :: (sprite : *Sprite) -> bool {
 	return sprite.initialized;
 }
 
+get_sprite :: (guid : string) -> *Sprite {
+	assert(is_valid(guid));
+	for assets.sprites {
+		if it.name == guid return it;
+	}
+	assert(false, "sprite not found: guid=%", guid);
+	return null;
+}
+
 sprite_save :: (asset : *Sprite) {
 	builder: String_Builder;
 	init_string_builder(*builder);
@@ -885,9 +813,9 @@ sprite_save :: (asset : *Sprite) {
 	append(*builder, name_len, size_of(s64));
 	append(*builder, asset.name);
 
-	src_len := cast(*u8)*asset.texture_asset_path.count;
+	src_len := cast(*u8)*asset.texture_guid.count;
 	append(*builder, src_len, size_of(s64));
-	append(*builder, asset.texture_asset_path);
+	append(*builder, asset.texture_guid);
 
 	// write the final file
 	path := tprint("%/%.%", config.asset_folder, asset.name, SPRITE_EXT);
@@ -931,15 +859,15 @@ sprite_load :: (filename : string) -> *Sprite {
 	// texture source
 	src_len := 0;
 	consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
-	asset.texture_asset_path = alloc_string(src_len);
-	consume_u8_and_length(*buffer, asset.texture_asset_path.data, src_len);
+	asset.texture_guid = alloc_string(src_len);
+	consume_u8_and_length(*buffer, asset.texture_guid.data, src_len);
 
 	print("\tLoaded Sprite: file=% | name=%\n", filename, asset.name);
 	return asset;
 }
 
 sprite_resolve :: (sprite : *Sprite) {
-	sprite.texture_asset = get_asset_from_name(sprite.texture_asset_path);
+	sprite.texture_asset = get_texture(sprite.texture_guid);
 
 	if sprite.texture_asset == null {
 		print("\tSprite texture not set yet. sprite=%\n", sprite.name);
@@ -967,8 +895,8 @@ sprite_resolve :: (sprite : *Sprite) {
 
 	sprite.resolved = true;
 
-	print("\tSprite resolved, sprite=% | texture=% frames=%\n", 
-		sprite.name, sprite.texture_asset.name, sprite.frames.count);
+	print("\tSprite resolved, sprite=% | Tex.GUID=% frames=%\n", 
+		sprite.name, sprite.texture_asset.guid, sprite.frames.count);
 }
 
 sprite_rename :: (sprite : *Sprite, name : string) {
@@ -998,7 +926,7 @@ _OLD_init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32},
 		//layer = layer, @CLEAN
 	};
 
-	sprite.texture = *get_texture(tid).texture;
+	sprite.texture = *_OLD_get_texture(tid).texture;
 	assert(sprite.texture != null);
 
 	for 0..frames-1 {
@@ -1275,7 +1203,7 @@ particle_texture : Texture;
 live_emitters : [..] *Particle_Emitter;
 
 init_particles :: () {
-	load_texture("particles/particle.png", *particle_texture);
+	load_raw_texture("particles/particle.png", *particle_texture);
 }
 
 deinit :: (emitter: *Particle_Emitter) {
@@ -1560,6 +1488,8 @@ register_commands :: () {
 #import "GL";
 #import "GetRect";
 using Sound :: #import "Sound_Player";
+#import "Hash_Table";
+#import "Hash";
 
 #load "assets.jai";
 #load "gfx.jai";

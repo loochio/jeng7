@@ -116,7 +116,7 @@ TextureID :: enum s64 {
 init_textures :: () {
 	load :: (_id : TextureID, _name : string) {
 		_OLD_textures[_id] = .{ id=xx _id, name=_name };
-		_OLD_textures[_id].loaded = load_texture(_name, *_OLD_textures[_id].texture);
+		_OLD_textures[_id].loaded = load_raw_texture(_name, *_OLD_textures[_id].texture);
 		assert(_OLD_textures[_id].loaded);
 	}
 
@@ -155,7 +155,7 @@ init_textures :: () {
 _OLD_textures : [TextureID.COUNT] _OLD_TextureAsset;
 //TEXTURE_COUNT :: #run enum_highest_value(TextureID); 
 
-get_texture :: (id : TextureID) -> *_OLD_TextureAsset{
+_OLD_get_texture :: (id : TextureID) -> *_OLD_TextureAsset{
 	return *_OLD_textures[id];
 }
 
@@ -203,7 +203,7 @@ init_sprites :: () {
 	_OLD_sprites[TextureID.Tile_Magma] = _OLD_init_sprite(.Tile_Magma, frames=4, play_length=1);
 }
 
-get_sprite :: (tid : TextureID) -> *Sprite {
+_OLD_get_sprite :: (tid : TextureID) -> *Sprite {
 	return *_OLD_sprites[tid];
 }
 
