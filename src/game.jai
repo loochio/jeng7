@@ -1337,44 +1337,6 @@ has_flag :: (a: *Actor, flag : ActorFlags) -> bool {
 	return a.flags & flag != 0;
 }
 
-//@CLEAN remove
-/*
-_OLD_get_actor_tid :: (type : ActorType) -> TextureID {
-	if type== {
-		case .Hero; 			return TextureID._DONE_Hero;
-		case .HeroRed; 			return TextureID._DONE_HeroRed;
-		case .Kid; 				return TextureID._DONE_Bug;
-
-		case .Block;			return TextureID.Tile_01;
-
-		case .WorldEntrance; 	return TextureID._DONE_Entrance;
-		case .WorldExit; 		return TextureID._DONE_Exit;
-		case .Console; 			return TextureID.ButtonA;
-		case .ConsoleMovable;	return TextureID.ButtonPickupA;
-		case .WallLock; 		return TextureID.LockA;
-		case .WallLockBig; 		return TextureID.LockBig;
-		case .TimerResetA; 		return TextureID.TimerResetA;
-
-		case .DropZone; 		return TextureID.DropZone;
-
-		case .Sign; 			return TextureID.Sign;
-
-		//@CLEAN
-		//case .Tile_Red;			return TextureID.Tile_Magma;
-		//case .Marker; 			return TextureID.Marker;
-	
-	}
-	assert(false, "%", type);
-	return .COUNT;
-}
-*/
-
-//@CLEAN
-//_OLD_get_actor_sprite :: (type : ActorType) -> *Sprite {
-//	tid := _OLD_get_actor_tid(type);
-//	return _OLD_get_sprite(tid);
-//}
-
 get_sprite :: (type : ActorType) -> *Sprite {
 	if type== {
 		case .Hero; 		return get_sprite("S_hero");
@@ -1398,11 +1360,6 @@ get_sprite :: (type : ActorType) -> *Sprite {
 	}
 	assert(false, "%", type);
 	return null;
-
- 	//@CLEAN
-	//old := _OLD_get_actor_sprite(type);
-	//assert(old != null, "sprite not found, ActorType=%", type);
-	//return old;
 }
 
 
@@ -1471,7 +1428,6 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .Hero; #through;
 		case .HeroRed;
 		{
-			//a.sprite_guid = "T_hero"; @CLEAN
 			a.flags |= .CanPossess | .Interactable | .Pickupable;
 			a.speed = HERO_SPEED_DEFAULT;
 			a.body.type = .Dynamic;
@@ -1494,7 +1450,6 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		}
 
 		case .Kid; {
-			//a.sprite_guid =  @CLEAN
 			a.flags |= .Pickupable;
 			a.body.type = .Dynamic;
 			a.body.size = .{12,12};

@@ -298,6 +298,11 @@ draw_box :: (box : Box, color : Vector4, thickness := 2.) {
 	draw_square(.{box.x, box.y-box.h/2}, .{box.w, t}, color);
 }
 
+draw_rect :: (r : Rect, color : Vector4)
+{
+	draw_square(.{r.x+r.w/2.,r.y+r.h/2.}, .{r.w, r.h}, color);
+}
+
 // mostly copied from GetRect/color_picker.jai, draw_hsv_circle()
 draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : float = 0, color : Vector4,
 		percent_begin := 0.) 
@@ -965,7 +970,6 @@ sprite_tick :: (sprite : *Sprite, dt : float) {
 sprite_reset :: (sprite : *Sprite) {
 	sprite.frame_current = 0;
 	sprite.play_position = 0;
-	sprite.playing = true;
 }
 
 sprite_play :: (sprite : *Sprite, play_rate := 1.) {
@@ -1132,11 +1136,11 @@ HorizontalLayout :: struct {}
 
 GridLayout :: struct {}
 
-next :: (layout : *VerticalLayout) -> Rect {
-	layout.line += 1;
-
-	return Rect.{};
-}
+//next :: (layout : *VerticalLayout) -> Rect {
+//	layout.line += 1;
+//
+//	return Rect.{};
+//}
 
 //button :: (layout : *Layout, text : string) -> bool {
 //	r := next(layout);

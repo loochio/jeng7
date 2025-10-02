@@ -30,6 +30,10 @@ edit_type := AssetType.Texture;
 texture_asset : *TextureAsset;
 sprite_asset : *Sprite;
 
+sprite_scale : float = 1.0;
+file_scroll : float = 0.0;
+
+
 
 asset_editor_new :: (type : AssetType) {
 	edit_type = type;
@@ -121,14 +125,16 @@ render_subwindow_mode :: (state: *Subwindow_State, r: Rect, data: *void) {
 }
 
 
-//@TODO need to render this in a scrollable box
 render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
+	//state, left_or_top, right_or_bottom, div := slidable_region(r, *hud_theme.slidable_region_theme);
+	//region, rin := begin_scrollable_region(right_or_bottom);
+
 	line := 1;
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	theme := *hud_theme.button_theme;
 	theme.alignment = .Left;
-	
+
 	for tx : assets.textures {
 		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
 		if button(r0, tx.guid, theme, identifier=line) { 
@@ -160,6 +166,9 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 			line += 1;
 		}
 	}
+
+	//end_scrollable_region(region, rin.x+rin.w, rin.y, *file_scroll);
+	//finish(state);
 }
 
 render_subwindow_view :: (state: *Subwindow_State, r: Rect, data: *void) {
@@ -489,13 +498,72 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 	}
 
 	// draw texture and sprite
+	rview := Rect.{r.x+rd.w, r.y, r.w-rd.w, r.h};
+
+	rspr := Rect.{rview.x, rview.y+rview.h*.5, rview.w, rview.h*.5};
+	draw_rect(rspr, GREY*0.25);
+
 	if sprite_asset.texture_asset != null {
-		rview := Rect.{r.x+rd.w, r.y, r.w-rd.w, r.h};
-		pos := Vector2.{rview.x+rview.w/2., rview.y+rview.h*0.8};
-		draw_texture(*sprite_asset.texture_asset.texture, pos, scale=.{1,1}, outline=true);
+		pos := Vector2.{rspr.x+rspr.w/2., rspr.y+rspr.h*0.8};
+		scale := Vector2.{sprite_scale, sprite_scale};
+		draw_texture(*sprite_asset.texture_asset.texture, pos, scale=scale, outline=true);
 
 		spos := Vector2.{pos.x, pos.y-200};
-		draw_square(spos, sprite_asset.frame_size, GREY);
-		draw_sprite(sprite_asset, spos);
+		draw_square(spos, sprite_asset.frame_size*scale, GREY);
+		draw_sprite(sprite_asset, spos, scale=scale);
+	}
+
+	// sprite controls
+	rctrl := Rect.{rview.x, rview.y, rview.w, rview.h*.5};
+	draw_rect(rctrl, GREY*.5);
+
+	next :: (r : *Rect, line : s64, line_height : float) -> s64{
+		l := line;
+		r.y = line_height * cast(float)l;
+		return line+1;
+	}
+
+	rbtns := Rect.{rctrl.x, rctrl.y, rctrl.w*.2, rctrl.h};
+	{
+		line := 0;
+		r := rbtns;
+		r.h = lh;
+
+		line = next(*r, line, lh);
+		if button(r, "Reset") { sprite_reset(sprite_asset); }
+		line = next(*r, line, lh);
+		if button(*r, "Pause") { sprite_pause(sprite_asset); }
+		line = next(*r, line, lh);
+		if button(*r, "Play") { sprite_play(sprite_asset); }
+		line = next(*r, line, lh);
+		if button(*r, "Step") { sprite_step(sprite_asset); }
+
+		line = next(*r, line, lh);
+    	slider(r, *sprite_scale, 1.0, 10.0, 1.0, *hud_theme.slider_theme, "scale: ", "");
+	}
+
+	rstats := Rect.{rbtns.x+rbtns.w, rbtns.y, rbtns.w*2, rbtns.h};
+	draw_rect(rstats, GREY*0.1);
+	{
+		line := 0;
+		r := rstats;
+		r.h = lh;
+		th := label_theme;
+
+		my_label :: (r : *Rect, line : s64, lh : float, label_theme : *Label_Theme, fmt : string, args : .. Any) -> s64{
+			line = next(r, line, lh);
+			txt := tprint(fmt, args);
+			label(r, txt, label_theme);
+			return line;
+		}
+
+		line = my_label(*r, line, lh, th, "Frame Current: %", sprite_asset.frame_current);
+		line = my_label(*r, line, lh, th, "Play Pos: %", sprite_asset.play_position);
+		line = my_label(*r, line, lh, th, "Play Rate: %", sprite_asset.play_rate);
+		line = my_label(*r, line, lh, th, "Playing: %", sprite_asset.playing);
+		line = my_label(*r, line, lh, th, "Visible: %", sprite_asset.visible);
+		line = my_label(*r, line, lh, th, "flip_x: %", sprite_asset.flip_x);
+		line = my_label(*r, line, lh, th, "flip_y: %", sprite_asset.flip_y);
+		line = my_label(*r, line, lh, th, "tint_mult: %", sprite_asset.tint_mult);
 	}
 }
