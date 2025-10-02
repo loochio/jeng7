@@ -1293,9 +1293,7 @@ ActorType :: enum s64 #specified {
 	EMPTY 		:: -1; // should never be serialized, using for world.actor mem
 
 	Hero		:: 0;
-	Marker		:: 1;
 	Block 		:: 2;
-	Tile_Red 	:: 3;
 	WorldEntrance :: 4;
 	WorldExit 	:: 5; // warps to the parent world
 
@@ -1340,48 +1338,42 @@ has_flag :: (a: *Actor, flag : ActorFlags) -> bool {
 }
 
 //@CLEAN remove
+/*
 _OLD_get_actor_tid :: (type : ActorType) -> TextureID {
 	if type== {
-		case .Hero; 			return TextureID.Hero;
-		case .HeroRed; 			return TextureID.HeroRed;
-		case .Kid; 				return TextureID.Bug;
+		case .Hero; 			return TextureID._DONE_Hero;
+		case .HeroRed; 			return TextureID._DONE_HeroRed;
+		case .Kid; 				return TextureID._DONE_Bug;
 
 		case .Block;			return TextureID.Tile_01;
 
+		case .WorldEntrance; 	return TextureID._DONE_Entrance;
+		case .WorldExit; 		return TextureID._DONE_Exit;
 		case .Console; 			return TextureID.ButtonA;
 		case .ConsoleMovable;	return TextureID.ButtonPickupA;
 		case .WallLock; 		return TextureID.LockA;
 		case .WallLockBig; 		return TextureID.LockBig;
 		case .TimerResetA; 		return TextureID.TimerResetA;
 
-
 		case .DropZone; 		return TextureID.DropZone;
 
 		case .Sign; 			return TextureID.Sign;
 
-
-		case .Tile_Red;			return TextureID.Tile_Magma;
-		case .Marker; 			return TextureID.Marker;
-		case .WorldEntrance; 	return TextureID.Entrance;
-		case .WorldExit; 		return TextureID.Exit;
+		//@CLEAN
+		//case .Tile_Red;			return TextureID.Tile_Magma;
+		//case .Marker; 			return TextureID.Marker;
+	
 	}
 	assert(false, "%", type);
 	return .COUNT;
 }
+*/
 
-_OLD_get_actor_sprite :: (type : ActorType) -> *Sprite {
-	//case type== { @CLEAN
-	//	case .Hero; return null;
-	//	case .HeroRed; return null;
-	//	case .Kid; return null;
-//
-	//	case .WorldEntrance; return null;
-	//	case .WorldExit; return null;
-	//}
-
-	tid := _OLD_get_actor_tid(type);
-	return _OLD_get_sprite(tid);
-}
+//@CLEAN
+//_OLD_get_actor_sprite :: (type : ActorType) -> *Sprite {
+//	tid := _OLD_get_actor_tid(type);
+//	return _OLD_get_sprite(tid);
+//}
 
 get_sprite :: (type : ActorType) -> *Sprite {
 	if type== {
@@ -1391,11 +1383,26 @@ get_sprite :: (type : ActorType) -> *Sprite {
 
 		case .WorldEntrance; return get_sprite("S_world_entrance");
 		case .WorldExit; 	return get_sprite("S_world_exit");
-	}
 
-	old := _OLD_get_actor_sprite(type);
-	assert(old != null, "sprite not found, ActorType=%", type);
-	return old;
+		case .Block; 		return get_sprite("S_block");
+
+		case .Console; 		return get_sprite("S_btn_sq_green");
+		case .ConsoleMovable; return get_sprite("S_btn_c_green");
+		case .WallLock; 	return get_sprite("S_lock_green");
+		case .WallLockBig; 	return get_sprite("S_lock_big");
+
+		case .DropZone; 	return get_sprite("S_zone_drop");
+		case .TimerResetA; 	return get_sprite("S_zone_reset_green");
+
+		case .Sign; 	return get_sprite("S_sign");
+	}
+	assert(false, "%", type);
+	return null;
+
+ 	//@CLEAN
+	//old := _OLD_get_actor_sprite(type);
+	//assert(old != null, "sprite not found, ActorType=%", type);
+	//return old;
 }
 
 
@@ -1409,11 +1416,7 @@ is_valid :: (actor : *Actor) -> bool{
 }
 
 is_valid_actor_spawner :: (type : ActorType) -> bool {
-	if type== {
-		case .EMPTY; return false;
-		case .Marker; return false;
-	}
-	return true;
+	return type != .EMPTY;
 }
 
 get_actor :: (aid : s64) -> *Actor {
@@ -2143,5 +2146,79 @@ set_configs :: (filename : string) {
 	print("\troot: %\n", level_root);
 	print("\tstart: %\n", level_start);
 }
+
+
+// ~~~~~~~ Colors ~~~~~~~ 
+//https://lospec.com/palette-list/cc-29
+G_BLACK 		:: Vector4.{0.129, 0.129, 0.137, 1};
+G_WHITE			:: Vector4.{0.949, 0.941, 0.898, 1};
+G_GREY 			:: Vector4.{0.722, 0.71, 0.725, 1};
+G_GREY2 		:: Vector4.{0.525, 0.506, 0.533, 1};
+G_GREY3 		:: Vector4.{0.392, 0.388, 0.396, 1};
+G_GREY3b	 	:: Vector4.{0.373, 0.333, 0.416, 1};
+G_GREY4 		:: Vector4.{0.271, 0.267, 0.31, 1};
+G_PURPLE	 	:: Vector4.{0.416, 0.325, 0.431, 1};
+G_PURPLE2	 	:: Vector4.{0.294, 0.255, 0.345, 1};
+G_PURPLE3 		:: Vector4.{0.208, 0.169, 0.259, 1};
+G_BLUE	 		:: Vector4.{0.294, 0.502, 0.792, 1};
+G_BLUE2 		:: Vector4.{0.263, 0.263, 0.416, 1};
+G_BLUE3 		:: Vector4.{0.227, 0.22, 0.345, 1};
+G_TEAL 			:: Vector4.{0.408, 0.761, 0.827, 1};
+G_TEAL2 		:: Vector4.{0.337, 0.482, 0.475, 1};
+G_GREEN 		:: Vector4.{0.635, 0.863, 0.78, 1};
+G_GREEN2 		:: Vector4.{0.761, 0.827, 0.408, 1};
+G_GREEN3 		:: Vector4.{0.541, 0.69, 0.376, 1};
+G_GREEN4 		:: Vector4.{0.306, 0.345, 0.29, 1};
+G_YELLOW 		:: Vector4.{0.929, 0.882, 0.62, 1};
+G_YELLOW2 		:: Vector4.{0.482, 0.447, 0.263, 1};
+G_YELLOW3 		:: Vector4.{0.698, 0.706, 0.494, 1};
+G_ORANGE 		:: Vector4.{0.827, 0.627, 0.408, 1};
+G_ORANGE2 		:: Vector4.{0.655, 0.482, 0.357, 1};
+G_ORANGE3 		:: Vector4.{0.898, 0.808, 0.706, 1};
+G_RED 			:: Vector4.{0.706, 0.322, 0.322, 1};
+G_RED2	 		:: Vector4.{0.502, 0.286, 0.227, 1};
+G_RED3 			:: Vector4.{0.929, 0.784, 0.769, 1};
+G_PINK	 		:: Vector4.{0.812, 0.541, 0.796, 1};
+
+
+//@TODO can probably roll this into a static array
+draw_pallet :: () {
+	d :: (index : s64, color : Vector4) {
+		size := Vector2.{16,16};
+		x := size.x * index + size.x;
+		draw_square(.{x, size.y/2}, size, color);
+	}
+	d(0, G_BLACK);
+	d(1, G_WHITE);
+	d(2, G_GREY);
+	d(3, G_GREY2);
+	d(4, G_GREY3);
+	d(5, G_GREY3b);
+	d(6, G_GREY4);
+
+	d(7, G_PURPLE);
+	d(8, G_PURPLE2);
+	d(9, G_PURPLE3);
+	d(10, G_BLUE);
+	d(11, G_BLUE2);
+	d(12, G_BLUE3);
+
+	d(13, G_TEAL);
+	d(14, G_TEAL2);
+	d(15, G_GREEN);
+	d(16, G_GREEN2);
+	d(17, G_GREEN3);
+	d(18, G_YELLOW);
+	d(19, G_YELLOW2);
+	d(20, G_YELLOW3);
+	d(21, G_ORANGE);
+	d(22, G_ORANGE2);
+	d(23, G_ORANGE3);
+	d(24, G_RED);
+	d(25, G_RED2);
+	d(26, G_RED3);
+	d(27, G_PINK);
+}
+
 
 #load "engine.jai";

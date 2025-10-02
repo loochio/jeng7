@@ -134,17 +134,17 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 		if button(r0, tx.guid, theme, identifier=line) { 
 			texture_asset = tx;
 			edit_type = .Texture;
-			print("Editting Asset: GUID=%\n", tx.guid);
+			print("Editting Texture: GUID=%\n", tx.guid);
 		}
 		line += 1;
 	}
 
-	for asset : assets.sprites {
+	for spr : assets.sprites {
 		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, asset.name, theme, identifier=line) { 
-			sprite_asset = asset;
+		if button(r0, spr.guid, theme, identifier=line) { 
+			sprite_asset = spr;
 			edit_type = .Sprite;
-			print("Editting Asset: %\n", asset.name);
+			print("Editting Sprite: %\n", spr.guid);
 		}
 		line += 1;
 	}
@@ -155,9 +155,7 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 		for asset : assets.textures {
 			r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
 			if button(r0, asset.guid, theme, identifier=line) { 
-				texture_asset = asset;
-				edit_type = .Texture;
-				print("Editting Asset: GUID=%\n", asset.guid);
+				print("DUMMY Editting Asset: GUID=% [Do Nothing]\n", asset.guid);
 			}
 			line += 1;
 		}
@@ -329,9 +327,9 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 		r1 := r0;
 		r1.x = rd.x+r0.w;
 		r1.w = rd.w*0.75;
-		action, text, state := text_input(r1, sprite_asset.name, *text_theme);
+		action, text, state := text_input(r1, sprite_asset.guid, *text_theme);
 		if action & .ENTERED {
-			sprite_rename(sprite_asset, text);
+			sprite_set_guid(sprite_asset, text);
 		}
 		line += 1;
 	}
@@ -343,7 +341,7 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 		r1 := r0;
 		r1.x = rd.x+r0.w;
 		r1.w = rd.w*0.75;
-		label(r1, sprite_asset.name, label_theme);
+		label(r1, sprite_asset.guid, label_theme);
 
 		line += 1;
 	}

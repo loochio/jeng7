@@ -180,7 +180,7 @@ editor_render :: (dt : float) {
 
 	// draw spawners
 	for editor_level.spawners {
-		sprite := _OLD_get_actor_sprite(it.type);
+		sprite := get_sprite(it.type);
 		pos := vec_editor_to_window(it.position);
 		draw_sprite(sprite, pos, scale);
 	}
@@ -552,16 +552,19 @@ tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: 
 		if !is_valid_actor_spawner(type) continue;
 
 		//@TODO render this button with the sprite
-    	textureid := _OLD_get_actor_tid(type);
-    	tex := *_OLD_get_texture(textureid).texture;
-    	assert(tex != null);
+		sprite := get_sprite(type);
+		assert(sprite.texture != null);
+		//@CLEAN
+    	//textureid := _OLD_get_actor_tid(type);
+    	//tex := *_OLD_get_texture(textureid).texture;
+    	//assert(tex != null);
 
     	rbtn := Rect.{0,0, AB,AB};
     	col := (index % COLUMNS) * AB;
     	rbtn.x = root.x + col;
     	row := (index / COLUMNS) * AB;
     	rbtn.y = root.y - row - rbtn.h;
-    	if button(rbtn, "", *hud_theme.button_theme, texture=tex, identifier=it) {
+    	if button(rbtn, "", *hud_theme.button_theme, texture=sprite.texture, identifier=it) {
     		atool.actor_type = type;
 	    }
 	    index +=1;

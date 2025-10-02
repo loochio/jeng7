@@ -130,14 +130,11 @@ engine_init :: (cfg : EngineConfig) {
 		window_x = cfg.x, window_y = cfg.y);
 
 	set_render_target(window);
-	shader_init();
 
+	sound_player_init(.{update_from_a_thread = true});
+
+	shader_init();
 	assets_init();
-	//@TODO move the below asset inits AssetManager
-	init_textures();
-	init_sprites();
-	init_sound();
-	init_particles();
 
 	//@TODO put behind a runtime config, not sure what that default value needs to be
 	if !config.vsync {
@@ -562,20 +559,28 @@ update_mouse :: (){
 MAX_ASSETS_TEXTURES :: 4096;
 MAX_ASSETS_SPRITES :: 4096;
 
+assets : AssetManager;
+
 AssetManager :: struct {
 	//@TODO do we get rid of the Pool since we have this Table now?
 	textures : Pool(TextureAsset, MAX_ASSETS_TEXTURES); 
 	texture_table : Table(string, *TextureAsset);
 
 	sprites : Pool(Sprite, MAX_ASSETS_SPRITES);
+	sprite_table : Table(string, *Sprite);
 }
 
-assets : AssetManager;
 
 assets_init :: () {
+	{//@TODO remove after asset refactor
+		print("[OLD] Loading legacy assets\n");
+		_OLD_init_sound();
+	}
+	
 	print("Loading ALL available assets | dir=%\n", asset_path);
 
 	init(*assets.texture_table, MAX_ASSETS_TEXTURES);
+	init(*assets.sprite_table, MAX_ASSETS_SPRITES);
 
 	files := file_list(asset_path);
 	for files {
@@ -583,13 +588,8 @@ assets_init :: () {
 		assert(path.words.count > 0);
 		filename := path.words[path.words.count-1];
 
-		if contains(filename, TEXTURE_EXT) {
-			texture_load(filename);
-		}
-
-		if contains(filename, SPRITE_EXT) {
-			sprite_load(filename);
-		}
+		if contains(filename, TEXTURE_EXT) 	texture_load(filename);
+		if contains(filename, SPRITE_EXT) 	sprite_load(filename);
 	}
 
 	// assets loaded, time to resolve intra-asset dependencies
@@ -604,6 +604,7 @@ assets_reset :: () {
 	pool_reset(*assets.sprites);
 
 	table_reset(*assets.texture_table);
+	table_reset(*assets.sprite_table);
 }
 
 
@@ -614,21 +615,10 @@ TextureAsset :: struct {
 	guid : string;
 	path : string; //relative path of this asset
 	source_path : string; //path to source image this asset wraps
-
 	texture : Texture;
 }
 
 TEXTURE_EXT :: "tasset";
-
-
-//@CLEAN
-_OLD_TextureAsset :: struct {
-	id : s64;
-	name : string;
-	texture : Texture;
-	loaded := false;
-}
-
 
 is_valid :: (tx : *TextureAsset) -> bool {
 	return is_valid(tx.guid);
@@ -682,22 +672,18 @@ texture_load :: (filename : string) -> *TextureAsset{
 	assert(VERSION == tx.VERSION, "ver=%", VERSION);
 
 	// guid
-	{
-		guid_len := 0;
-		consume_u8_and_length(*buffer, cast(*u8)*guid_len, size_of(s64));
-		tx.guid = alloc_string(guid_len);
-		consume_u8_and_length(*buffer, tx.guid.data, guid_len);
+	guid_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*guid_len, size_of(s64));
+	tx.guid = alloc_string(guid_len);
+	consume_u8_and_length(*buffer, tx.guid.data, guid_len);
 
-		tx.path = sprint("%/%.%", config.asset_folder, tx.guid, TEXTURE_EXT);
-	}
+	tx.path = sprint("%/%.%", config.asset_folder, tx.guid, TEXTURE_EXT);
 	
 	// texture source
-	{
-		src_len := 0;
-		consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
-		tx.source_path = alloc_string(src_len);
-		consume_u8_and_length(*buffer, tx.source_path.data, src_len);
-	}
+	src_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
+	tx.source_path = alloc_string(src_len);
+	consume_u8_and_length(*buffer, tx.source_path.data, src_len);
 
 	texture_load_from_src(tx);
 	
@@ -731,7 +717,7 @@ Sprite :: struct {
 	VERSION :: 1;
 
 	//@TODO duplicate, can be moved to Asset struct
-	name : string;
+	guid : string;
 	path : string;
 
 	texture_guid : string; 	// serialized, should be a T_* string
@@ -786,12 +772,9 @@ is_valid :: (sprite : *Sprite) -> bool {
 }
 
 get_sprite :: (guid : string) -> *Sprite {
-	assert(is_valid(guid));
-	for assets.sprites {
-		if it.name == guid return it;
-	}
-	assert(false, "sprite not found: guid=%", guid);
-	return null;
+	success, result := table_find_new(*assets.sprite_table, guid);
+	assert(success, "%", guid);
+	return result;
 }
 
 sprite_save :: (asset : *Sprite) {
@@ -809,16 +792,16 @@ sprite_save :: (asset : *Sprite) {
 	append(*builder, cast(*u8)*asset.default_flip_x, size_of(u8));
 	append(*builder, cast(*u8)*asset.default_flip_y, size_of(u8));
 
-	name_len := cast(*u8)*asset.name.count;
+	name_len := cast(*u8)*asset.guid.count;
 	append(*builder, name_len, size_of(s64));
-	append(*builder, asset.name);
+	append(*builder, asset.guid);
 
 	src_len := cast(*u8)*asset.texture_guid.count;
 	append(*builder, src_len, size_of(s64));
 	append(*builder, asset.texture_guid);
 
 	// write the final file
-	path := tprint("%/%.%", config.asset_folder, asset.name, SPRITE_EXT);
+	path := tprint("%/%.%", config.asset_folder, asset.guid, SPRITE_EXT);
 	write_entire_file(path, *builder);
 	reset(*builder);
 	print("Saved %\n", path);
@@ -833,44 +816,50 @@ sprite_load :: (filename : string) -> *Sprite {
 		return null;
 	}
 
-	asset := sprite_alloc();
+	spr := sprite_alloc();
 
 	// version
 	VERSION := 0;
 	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
-	assert(VERSION == asset.VERSION, "ver=%", VERSION);
+	assert(VERSION == spr.VERSION, "ver=%", VERSION);
 
-	consume_u8_and_length(*buffer, cast(*u8)*asset.frame_count, size_of(s64));
-	consume_u8_and_length(*buffer, cast(*u8)*asset.frame_size, size_of(Vector2));
-	consume_u8_and_length(*buffer, cast(*u8)*asset.play_length, size_of(float));
-	consume_u8_and_length(*buffer, cast(*u8)*asset.offset, size_of(Vector2));
-	consume_u8_and_length(*buffer, cast(*u8)*asset.tint, size_of(Vector4));
-	consume_u8_and_length(*buffer, cast(*u8)*asset.loop, size_of(u8));
-	consume_u8_and_length(*buffer, cast(*u8)*asset.default_flip_x, size_of(u8));
-	consume_u8_and_length(*buffer, cast(*u8)*asset.default_flip_y, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.frame_count, size_of(s64));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.frame_size, size_of(Vector2));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.play_length, size_of(float));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.offset, size_of(Vector2));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.tint, size_of(Vector4));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.loop, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.default_flip_x, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.default_flip_y, size_of(u8));
 	
-	// name
-	name_len := 0;
-	consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
-	asset.name = alloc_string(name_len);
-	consume_u8_and_length(*buffer, asset.name.data, name_len);
-	asset.path = sprint("%/%.%", config.asset_folder, asset.name, TEXTURE_EXT);
+	// guid
+	guid_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*guid_len, size_of(s64));
+	spr.guid = alloc_string(guid_len);
+	consume_u8_and_length(*buffer, spr.guid.data, guid_len);
+
+	//@TODO we aren't using this, we just define the path up there in sprite_save(..)
+	spr.path = sprint("%/%.%", config.asset_folder, spr.guid, SPRITE_EXT);
 	
 	// texture source
 	src_len := 0;
 	consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
-	asset.texture_guid = alloc_string(src_len);
-	consume_u8_and_length(*buffer, asset.texture_guid.data, src_len);
+	spr.texture_guid = alloc_string(src_len);
+	consume_u8_and_length(*buffer, spr.texture_guid.data, src_len);
 
-	print("\tLoaded Sprite: file=% | name=%\n", filename, asset.name);
-	return asset;
+	assert(!table_contains(*assets.sprite_table, spr.guid), "%", spr.guid);
+	table_set(*assets.sprite_table, spr.guid, spr);
+
+	print("\tLoaded Sprite: file=% | GUID=%\n", filename, spr.guid);
+	return spr;
 }
 
+// set the raw texture pointer, recreate our frame array
 sprite_resolve :: (sprite : *Sprite) {
 	sprite.texture_asset = get_texture(sprite.texture_guid);
 
 	if sprite.texture_asset == null {
-		print("\tSprite texture not set yet. sprite=%\n", sprite.name);
+		print("\tSprite texture not set yet. GUID=%\n", sprite.guid);
 		return;
 	}
 	
@@ -895,63 +884,21 @@ sprite_resolve :: (sprite : *Sprite) {
 
 	sprite.resolved = true;
 
-	print("\tSprite resolved, sprite=% | Tex.GUID=% frames=%\n", 
-		sprite.name, sprite.texture_asset.guid, sprite.frames.count);
+	print("\tSprite resolved, GUID=% | Tex.GUID=% frames=%\n", 
+		sprite.guid, sprite.texture_asset.guid, sprite.frames.count);
 }
 
-sprite_rename :: (sprite : *Sprite, name : string) {
-	string_reset(*sprite.name);
-	sprite.name = sprint(name);
+sprite_set_guid :: (sprite : *Sprite, guid : string) {
+	string_reset(*sprite.guid);
+	sprite.guid = sprint(guid);
 	string_reset(*sprite.path);
-	sprite.path = sprint("%/%.%", config.asset_folder, name, SPRITE_EXT);
-}
-
-
-
-//@TODO define sprite data in a SpriteAsset
-_OLD_init_sprite :: (tid : TextureID, frame_size := Vector2.{32,32}, 
-	in_tint := Vector4.{1,1,1,1}, frames := 1, play_length : float = 0) -> Sprite 
-{
-	sprite := Sprite.{
-		initialized = true,
-		tint = in_tint,
-		frame_size = frame_size,
-
-		//@CLEAN
-		//@TODO we're assuming a horizontal packing of frames, will be improved with atlas parsing
-		//@TODO we can read this from the actual Texture
-		//texture_size = Vector2.{frame_size.x*frames, frame_size.y},
-		
-
-		//layer = layer, @CLEAN
-	};
-
-	sprite.texture = *_OLD_get_texture(tid).texture;
-	assert(sprite.texture != null);
-
-	for 0..frames-1 {
-		frame := SpriteFrame.{
-			index = it,
-			coords = Box.{x=frame_size.x*it, y=0, w=frame_size.x, h=frame_size.y},
-			play_length = play_length / frames,
-			play_start = sprite.play_length,
-		};
-		sprite.play_length += frame.play_length;
-		array_add(*sprite.frames, frame);
-	}
-	return sprite;
-}
-
-//@TODO not sure yet where/when we're calling this
-deinit_sprite :: (sprite : *Sprite) {
-	array_reset(*sprite.frames);
+	sprite.path = sprint("%/%.%", config.asset_folder, guid, SPRITE_EXT);
 }
 
 draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}) {
 	if !sprite.initialized return;
 	if !sprite.visible return;
 
-	//@TODO point to the texture asset
 	set_shader_for_images(sprite.texture);
     
     frame := sprite.frames[sprite.frame_current];
@@ -990,14 +937,16 @@ draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}) 
 sprite_step :: (sprite : *Sprite) {
 	if !sprite.initialized return;
 
-	fc := sprite.frame_current;
-	if fc+1 >= sprite.frames.count {
+	if sprite.frame_current+1 >= sprite.frames.count {
 		if sprite.loop {
-			sprite.frame_current = 0;
+			sprite_reset(sprite);
+		}
+		else {
+			sprite.playing = false;
 		}
 		return;
 	}
-	sprite.frame_current = fc+1;
+	sprite.frame_current += 1;
 }
 
 sprite_tick :: (sprite : *Sprite, dt : float) {
@@ -1009,9 +958,6 @@ sprite_tick :: (sprite : *Sprite, dt : float) {
 	fc := sprite.frame_current;
 	frame := sprite.frames[fc];
 	if sprite.play_position > (frame.play_start + frame.play_length) {
-		if sprite.loop {
-			sprite.play_position = 0;
-		}
 		sprite_step(sprite);
 	}
 } 
@@ -1019,6 +965,7 @@ sprite_tick :: (sprite : *Sprite, dt : float) {
 sprite_reset :: (sprite : *Sprite) {
 	sprite.frame_current = 0;
 	sprite.play_position = 0;
+	sprite.playing = true;
 }
 
 sprite_play :: (sprite : *Sprite, play_rate := 1.) {
@@ -1143,147 +1090,6 @@ for_expansion :: (pool : *Pool, body : Code, flags : For_Flags) #expand {
 
 		#insert body;
 	}
-}
-
-
-// ~~ Particle System ~~
-// mostly copied from Invaders Jai example
-
-Particle_Emitter :: struct {
-    position : Vector2;
-    velocity : Vector2;
-
-    particles: [..] Particle;
-    fadeout_period : float = 0.1;
-    particles_per_second : float = 150;
-
-    speed0 : float = 0;
-    speed1 : float = 0.1;
-
-    size0 : float = 0.001;
-    size1 : float = 0.005;
-
-    drag0 : float = 0.9999;
-    drag1: float = 0.9;
-
-    lifetime0: float = 0.4;
-    lifetime1: float = 1.0;
-
-    emitter_lifetime := -1.0;
-
-    theta0: float = 0;
-    theta1: float = TAU;
-
-    color0: Vector4;
-    color1: Vector4;
-
-    elapsed : float = 0;
-    remainder : float = 0;
-
-    enabled := true;
-    producing := true;
-}
-
-Particle :: struct {
-    position: Vector2;
-    velocity: Vector2;
-
-    size     := 0.0;
-    lifetime := 2.0;
-    drag     := 1.0;
-
-    elapsed  := 0.0;
-
-    color:   Vector4;
-}
-
-particle_texture : Texture;
-
-//@TODO needs to be moved to game world
-live_emitters : [..] *Particle_Emitter;
-
-init_particles :: () {
-	load_raw_texture("particles/particle.png", *particle_texture);
-}
-
-deinit :: (emitter: *Particle_Emitter) {
-    array_free(emitter.particles);
-}
-
-destroy :: (emitter: *Particle_Emitter) {
-	array_ordered_remove_by_value(*live_emitters, emitter);  // Ordered remove, because we spawn some emitters in specific orders.
-    deinit(emitter);
-    free(emitter);
-}
-
-tick_emitter :: (emitter: *Particle_Emitter, dt: float) {
-    sim_particle :: (p: *Particle, dt: float) {
-        linear_move(*p.position, *p.velocity, dt);
-
-        // @Incomplete: Apply correct drag over time.
-        p.velocity *= p.drag;
-        p.elapsed  += dt;
-    }
-
-    for * p: emitter.particles {
-        sim_particle(p, dt);
-
-        if p.elapsed > p.lifetime {
-            remove p;
-        }
-    }
-
-    dt_per_particle := 1.0 / emitter.particles_per_second;
-
-    emitter.elapsed += dt;
-    emitter.remainder += dt;
-
-    if emitter.emitter_lifetime >= 0 then {
-        emitter.emitter_lifetime -= dt;
-        if emitter.emitter_lifetime < 0 then emitter.producing = false;
-    }
-
-    spawn_particle :: (emitter: *Particle_Emitter) -> *Particle {
-        p := array_add(*emitter.particles);
-
-        p.position = emitter.position;
-        p.velocity = emitter.velocity;
-
-        p.size = random_get_within_range(emitter.size0, emitter.size1);
-        p.drag = random_get_within_range(emitter.drag0, emitter.drag1);
-        p.lifetime = random_get_within_range(emitter.lifetime0, emitter.lifetime1);
-
-        color_t := random_get_within_range(0, 1);
-        p.color = lerp(emitter.color0, emitter.color1, color_t);
-
-        speed := random_get_within_range(emitter.speed0, emitter.speed1);
-        theta := random_get_within_range(emitter.theta0, emitter.theta1);
-
-        ct := cos(theta);
-        st := sin(theta);
-
-        v_rel: Vector2 = ---;
-        v_rel.x = speed * ct;
-        v_rel.y = speed * st;
-
-        p.velocity += v_rel;
-
-        return p;
-    }
-
-    if emitter.producing then {
-    	if emitter.enabled {
-    		while emitter.remainder > dt_per_particle {
-	            emitter.remainder -= dt_per_particle;
-	            p := spawn_particle(emitter);
-	            sim_particle(p, emitter.remainder);
-	        }
-    	}
-    } else {
-        if emitter.particles.count == 0 then {
-            destroy(emitter);
-        }
-    }
 }
 
 // ~~~ UI ~~~
@@ -1446,7 +1252,6 @@ begins_with_count :: (str: string, prefix: string) -> int {
 register_commands :: () {
 	#if !DEVELOPER return;
 
-	//register_cmd("test", (args: .. Any) { print("CMD test args=%\n", args); });
 	register_cmd("toggle_ui", (args: .. Any) { debug_ui_enabled = !debug_ui_enabled; });
 	register_cmd("toggle_mute", (args: .. Any) { toggle_mute(); });
 	register_cmd("fps", (args: .. Any) {  config.fps = ifx config.fps == -1 then 144 else -1; });
@@ -1466,12 +1271,16 @@ register_commands :: () {
 		}
 	});
 
-	register_cmd("shader_init", (args: .. Any) { shader_init(); } );
+	register_cmd("game", (args: .. Any) { set_plugin("game"); } );
+	register_cmd("edit", (args: .. Any) { set_plugin("editor"); } );
+	register_cmd("assets", (args: .. Any) { set_plugin("assets"); } );
 
 	register_cmd("assets_reload", (args: .. Any) { 
 		assets_reset();
 		assets_init();
 	});
+
+	register_cmd("shader_init", (args: .. Any) { shader_init(); } );
 }
 
 
