@@ -1382,6 +1382,31 @@ update_ui_hit :: (r : *Rect) {
 	ui_hit_this_frame |= is_inside(mouse_pos_window.x, mouse_pos_window.y, r);
 }
 
+//@TODO RectLayouts
+
+Layout :: struct {
+
+}
+
+VerticalLayout :: struct {
+	root : Rect;
+	line := 0;
+}
+
+HorizontalLayout :: struct {
+
+}
+
+GridLayout :: struct {
+
+}
+
+next :: (layout : *VerticalLayout) -> Rect {
+	line += 1;
+
+	return Rect.{};
+}
+
 // Moving this out of the main loop for readability
 debug_rendering :: () {
 	#if DEVELOPER {
@@ -1434,9 +1459,6 @@ debug_rendering :: () {
 			}
 		}
 	}
-
-    //@CLEAN TEMP
-    shader_draw_test();
 }
 
 terminal_prompt : string;

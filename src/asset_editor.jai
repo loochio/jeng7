@@ -30,10 +30,6 @@ edit_type := AssetType.Texture;
 texture_asset : *TextureAsset;
 sprite_asset : *Sprite;
 
-//@CLEAN
-//texture_asset : *TextureAsset;
-//sprite_asset : *SpriteAsset;
-
 
 asset_editor_new :: (type : AssetType) {
 	edit_type = type;
@@ -125,15 +121,15 @@ render_subwindow_mode :: (state: *Subwindow_State, r: Rect, data: *void) {
 }
 
 
+//@TODO need to render this in a scrollable box
 render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	line := 1;
+	p := 4.;
+	lh := cast(float)hud_font_pixel_height+p;
+	theme := *hud_theme.button_theme;
+	theme.alignment = .Left;
 	
 	for asset : assets.textures {
-		p := 4.;
-		lh := cast(float)hud_font_pixel_height+p;
-		theme := *hud_theme.button_theme;
-		theme.alignment = .Left;
-
 		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
 		if button(r0, asset.name, theme, identifier=line) { 
 			texture_asset = asset;
@@ -144,11 +140,6 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	}
 
 	for asset : assets.sprites {
-		p := 4.;
-		lh := cast(float)hud_font_pixel_height+p;
-		theme := *hud_theme.button_theme;
-		theme.alignment = .Left;
-
 		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
 		if button(r0, asset.name, theme, identifier=line) { 
 			sprite_asset = asset;
@@ -156,6 +147,20 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 			print("Editting Asset: %\n", asset.name);
 		}
 		line += 1;
+	}
+
+	//@CLEAN temp testing, drawing extra entries
+	line += 1;
+	for 0..10 {
+		for asset : assets.textures {
+			r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
+			if button(r0, asset.name, theme, identifier=line) { 
+				texture_asset = asset;
+				edit_type = .Texture;
+				print("Editting Asset: %\n", asset.name);
+			}
+			line += 1;
+		}
 	}
 }
 
