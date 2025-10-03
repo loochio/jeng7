@@ -369,6 +369,10 @@ draw_texture :: (texture : *Texture, window_pos : Vector2, scale := Vector2.{1,1
     p2 := window_pos + h + v;
     p3 := window_pos - h + v;
 	set_shader_for_images(texture);
+
+	//@TODO move this down to gfx.jai
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
     immediate_quad(p0, p1, p2, p3, WHITE);
 }
 
@@ -1121,31 +1125,51 @@ update_ui_hit :: (r : *Rect) {
 	ui_hit_this_frame |= is_inside(mouse_pos_window.x, mouse_pos_window.y, r);
 }
 
-// RectLayouts
+
+//~~~ UI Layouts ~~~
+
+// assumes r.h is our line height
+ui_line :: (r : *Rect, line : s64, direction := 1) -> s64 {
+	r.y += r.h * direction;
+	return line+1;
+}
 
 Layout :: struct {
 	root : Rect;
 }
 
+//@TODO
+//HorizontalLayout :: struct {}
+//GridLayout :: struct {}
+
 VerticalLayout :: struct {
 	#as using layout : Layout;
 	line := 0;
+	direction := VerticalGrowDirection.Up;
 }
 
-HorizontalLayout :: struct {}
+VerticalGrowDirection :: enum {
+	Down; //@TODO need to get this working, based on pivot values
+	Up;
+}
 
-GridLayout :: struct {}
 
-//next :: (layout : *VerticalLayout) -> Rect {
-//	layout.line += 1;
-//
-//	return Rect.{};
-//}
+ui_line :: (layout : *VerticalLayout) {
+	dir := ifx layout.direction == .Up then 1 else -1;
+	layout.line = ui_line(*layout.root, layout.line, dir);
+}
 
-//button :: (layout : *Layout, text : string) -> bool {
-//	r := next(layout);
-//	return button(r, text, *hud_theme.button_theme);
-//}
+ui_next :: (layout : *VerticalLayout) -> Rect {
+	ui_line(layout);
+	return layout.root;
+}
+
+ui_label :: (layout : *VerticalLayout, fmt : string, args : .. Any) {
+	r := ui_next(layout);
+	txt := tprint(fmt, args);
+	label(r, txt, *hud_theme.label_theme);
+}
+
 
 
 // Moving this out of the main loop for readability

@@ -78,8 +78,8 @@ set_shader :: (shader : ShaderType, texture : *Texture = null) {
 		case .Texture; {
 			assert(texture != null);
 			//@TODO
-			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			set_shader_for_images(texture);
+			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		}
 		case .Custom; {
 			if context.simp.current_shader != *shader_custom {

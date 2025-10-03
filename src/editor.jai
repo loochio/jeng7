@@ -554,10 +554,6 @@ tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: 
 		//@TODO render this button with the sprite
 		sprite := get_sprite(type);
 		assert(sprite.texture != null);
-		//@CLEAN
-    	//textureid := _OLD_get_actor_tid(type);
-    	//tex := *_OLD_get_texture(textureid).texture;
-    	//assert(tex != null);
 
     	rbtn := Rect.{0,0, AB,AB};
     	col := (index % COLUMNS) * AB;

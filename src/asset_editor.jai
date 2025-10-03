@@ -30,7 +30,7 @@ edit_type := AssetType.Texture;
 texture_asset : *TextureAsset;
 sprite_asset : *Sprite;
 
-sprite_scale : float = 1.0;
+sprite_scale : float = 4.0;
 file_scroll : float = 0.0;
 
 
@@ -124,46 +124,56 @@ render_subwindow_mode :: (state: *Subwindow_State, r: Rect, data: *void) {
 	}
 }
 
+FILTER_TYPES :: 3;
+file_filter_all :: "All";
+file_filter_textures :: "Textures";
+file_filter_sprites :: "Sprites";
+
+file_filters : [FILTER_TYPES] string;
+file_filter_index : s32 = 0;
+
 
 render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
-	//state, left_or_top, right_or_bottom, div := slidable_region(r, *hud_theme.slidable_region_theme);
-	//region, rin := begin_scrollable_region(right_or_bottom);
-
-	line := 1;
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	theme := *hud_theme.button_theme;
 	theme.alignment = .Left;
 
-	for tx : assets.textures {
-		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, tx.guid, theme, identifier=line) { 
-			texture_asset = tx;
-			edit_type = .Texture;
-			print("Editting Texture: GUID=%\n", tx.guid);
-		}
-		line += 1;
-	}
+	// category filters
+	rcat := Rect.{r.x, r.y+r.h-lh, r.w, lh};
 
-	for spr : assets.sprites {
-		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, spr.guid, theme, identifier=line) { 
-			sprite_asset = spr;
-			edit_type = .Sprite;
-			print("Editting Sprite: %\n", spr.guid);
-		}
-		line += 1;
-	}
+	//@TODO annoying, should declare this statically but I'm not sure how
+	file_filters[0] = file_filter_all;
+	file_filters[1] = file_filter_textures;
+	file_filters[2] = file_filter_sprites;
+	changed, state := dropdown(rcat, file_filters, *file_filter_index, *hud_theme.dropdown_theme);
 
-	//@CLEAN temp testing, drawing extra entries
-	line += 1;
-	for 0..10 {
-		for asset : assets.textures {
-			r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-			if button(r0, asset.guid, theme, identifier=line) { 
-				print("DUMMY Editting Asset: GUID=% [Do Nothing]\n", asset.guid);
+	// ~~~ Asset File Selection ~~~
+	//state, left_or_top, right_or_bottom, div := slidable_region(r, *hud_theme.slidable_region_theme);
+	//region, rin := begin_scrollable_region(right_or_bottom);
+
+	layout := VerticalLayout.{ root = .{r.x, r.y+r.h-(lh*2), r.w, lh}, direction=.Down };
+	show_all := file_filter_index == 0;
+	show_textures := show_all || file_filter_index==1;
+	show_sprites := show_all || file_filter_index==2;
+
+	if show_textures {
+		for tx : assets.textures {
+			if button(ui_next(*layout), tx.guid, theme, identifier=layout.line) { 
+				texture_asset = tx;
+				edit_type = .Texture;
+				print("Editting Texture: GUID=%\n", tx.guid);
 			}
-			line += 1;
+		}
+	}
+	
+	if show_sprites {
+		for spr : assets.sprites {
+			if button(ui_next(*layout), spr.guid, theme, identifier=layout.line) { 
+				sprite_asset = spr;
+				edit_type = .Sprite;
+				print("Editting Sprite: %\n", spr.guid);
+			}
 		}
 	}
 
@@ -312,7 +322,37 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 
 	// details
 	rd := Rect.{r.x, r.y, r.w*0.4, r.h};
-	draw_square(.{rd.x+rd.w/2., rd.y+rd.h/2.}, .{rd.w, rd.h}, G_BLACK);
+	draw_rect(rd, G_BLACK);
+
+	/* @TODO attempt at doing layouts, still tedious
+	{
+		layout := VerticalLayout.{ root=.{rd.x, rd.y, rd.w, lh} };
+
+		ui_label(*layout, "Asset Type: Sprite");
+
+		{
+			rb := ui_next(*layout);
+			rb.w *= 0.25;
+			if button(rb, "Save") { sprite_save(sprite_asset); }
+		}
+
+		{
+			r0 := ui_next(*layout);
+			r0.w *= 0.25;
+			ui_label(*r0, layout.line, r0.h, "Name");
+
+			r1 := r0;
+			r1.x = r0.x+r0.w;
+			r1.w = r0.w*3;
+			action, text, state := text_input(r1, sprite_asset.guid, *text_theme);
+			if action & .ENTERED {
+				sprite_set_guid(sprite_asset, text);
+			}
+		}
+	}
+	*/
+
+
 	line=1;
 
 	{
@@ -517,53 +557,29 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 	rctrl := Rect.{rview.x, rview.y, rview.w, rview.h*.5};
 	draw_rect(rctrl, GREY*.5);
 
-	next :: (r : *Rect, line : s64, line_height : float) -> s64{
-		l := line;
-		r.y = line_height * cast(float)l;
-		return line+1;
-	}
-
 	rbtns := Rect.{rctrl.x, rctrl.y, rctrl.w*.2, rctrl.h};
 	{
-		line := 0;
-		r := rbtns;
-		r.h = lh;
+		layout := VerticalLayout.{ root=.{rbtns.x, rbtns.y, rbtns.w, lh} };
+		if button(ui_next(*layout), "Reset") { sprite_reset(sprite_asset); }
+		if button(ui_next(*layout), "Pause") { sprite_pause(sprite_asset); }
+		if button(ui_next(*layout), "Play") { sprite_play(sprite_asset); }
+		if button(ui_next(*layout), "Step") { sprite_step(sprite_asset); }
 
-		line = next(*r, line, lh);
-		if button(r, "Reset") { sprite_reset(sprite_asset); }
-		line = next(*r, line, lh);
-		if button(*r, "Pause") { sprite_pause(sprite_asset); }
-		line = next(*r, line, lh);
-		if button(*r, "Play") { sprite_play(sprite_asset); }
-		line = next(*r, line, lh);
-		if button(*r, "Step") { sprite_step(sprite_asset); }
-
-		line = next(*r, line, lh);
-    	slider(r, *sprite_scale, 1.0, 10.0, 1.0, *hud_theme.slider_theme, "scale: ", "");
+    	slider(ui_next(*layout), *sprite_scale, 1.0, 10.0, 1.0, *hud_theme.slider_theme, "scale: ", "");
 	}
 
 	rstats := Rect.{rbtns.x+rbtns.w, rbtns.y, rbtns.w*2, rbtns.h};
 	draw_rect(rstats, GREY*0.1);
 	{
-		line := 0;
-		r := rstats;
-		r.h = lh;
-		th := label_theme;
+		layout := VerticalLayout.{ root=.{rstats.x, rstats.y, rstats.w, lh} };
 
-		my_label :: (r : *Rect, line : s64, lh : float, label_theme : *Label_Theme, fmt : string, args : .. Any) -> s64{
-			line = next(r, line, lh);
-			txt := tprint(fmt, args);
-			label(r, txt, label_theme);
-			return line;
-		}
-
-		line = my_label(*r, line, lh, th, "Frame Current: %", sprite_asset.frame_current);
-		line = my_label(*r, line, lh, th, "Play Pos: %", sprite_asset.play_position);
-		line = my_label(*r, line, lh, th, "Play Rate: %", sprite_asset.play_rate);
-		line = my_label(*r, line, lh, th, "Playing: %", sprite_asset.playing);
-		line = my_label(*r, line, lh, th, "Visible: %", sprite_asset.visible);
-		line = my_label(*r, line, lh, th, "flip_x: %", sprite_asset.flip_x);
-		line = my_label(*r, line, lh, th, "flip_y: %", sprite_asset.flip_y);
-		line = my_label(*r, line, lh, th, "tint_mult: %", sprite_asset.tint_mult);
+		ui_label(*layout, "Frame Current: %", sprite_asset.frame_current);
+		ui_label(*layout, "Play Pos: %", sprite_asset.play_position);
+		ui_label(*layout, "Play Rate: %", sprite_asset.play_rate);
+		ui_label(*layout, "Playing: %", sprite_asset.playing);
+		ui_label(*layout, "Visible: %", sprite_asset.visible);
+		ui_label(*layout, "flip_x: %", sprite_asset.flip_x);
+		ui_label(*layout, "flip_y: %", sprite_asset.flip_y);
+		ui_label(*layout, "tint_mult: %", sprite_asset.tint_mult);
 	}
 }
