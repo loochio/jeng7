@@ -149,13 +149,15 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	changed, state := dropdown(rcat, file_filters, *file_filter_index, *hud_theme.dropdown_theme);
 
 	// ~~~ Asset File Selection ~~~
-	//state, left_or_top, right_or_bottom, div := slidable_region(r, *hud_theme.slidable_region_theme);
-	//region, rin := begin_scrollable_region(right_or_bottom);
 
-	layout := VerticalLayout.{ root = .{r.x, r.y+r.h-(lh*2), r.w, lh}, direction=.Down };
+	rass := Rect.{r.x, r.y+r.h-(lh*2), r.w, r.h-(lh*2)};
+	layout := VerticalLayout.{ root = .{rass.x, rass.y, rass.w, lh }, direction=.Down };
 	show_all := file_filter_index == 0;
 	show_textures := show_all || file_filter_index==1;
 	show_sprites := show_all || file_filter_index==2;
+
+	//state, left_or_top, right_or_bottom, div := slidable_region(r, *hud_theme.slidable_region_theme);
+	//region, rin := begin_scrollable_region(rass);
 
 	if show_textures {
 		for tx : assets.textures {
