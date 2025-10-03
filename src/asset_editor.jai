@@ -71,6 +71,9 @@ asset_editor_init :: () {
 
 asset_editor_deinit :: () {
 	print("- Asset Editor Deinit -\n");
+
+	// reset any runtime data on our assets
+	for assets.sprites sprite_reset(it);
 };
 
 asset_editor_begin :: () {};
@@ -532,7 +535,9 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 
 		spos := Vector2.{pos.x, pos.y-200};
 		draw_square(spos, sprite_asset.frame_size*scale, GREY);
-		draw_sprite(sprite_asset, spos, scale=scale);
+
+		//@TODO hacky that we have to undo win aspect scale
+		draw_sprite(sprite_asset, spos, scale=scale/get_window_aspect_scale());
 	}
 
 	// sprite controls
