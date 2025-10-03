@@ -150,7 +150,7 @@ game_tick :: (dt : float) {
 toggle_pause :: () {
 	game_paused = !game_paused;
 	pause_physics = game_paused;
-	play_sound(.Pause);
+	play_sound("SFX_pause");
 }
 
 
@@ -622,7 +622,7 @@ world_transition_begin :: (a : *Actor, world : *World = null) {
 	a.world.transition_world = ifx enter then world else a.world.parent;
 	assert(a.world.transition_world != null);
 
-	play_sound(.Warp);
+	play_sound("SFX_warp");
 }
 
 world_transition_end :: (using world : *World) {
@@ -689,7 +689,9 @@ world_exit :: (a : *Actor) {
 
 	if new_actor && has_flag(new_actor, .Possessed){
 		set_active_world(new_actor);
-		play_sound(.Warp, pitch_min=.7, pitch_max=.7);
+		play_sound("SFX_warp");
+		//@CLEAN
+		//play_sound(.Warp, pitch_min=.7, pitch_max=.7);
 	}
 }
 
@@ -1528,7 +1530,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.proc_on_interact = console_interact_a;
 			a.proc_onlifetime_expired = (a : *Actor) {
 				console_deinteract(a);
-				play_sound(.Pause);
+				play_sound("SFX_pause");
 			}
 		}
 
@@ -1547,7 +1549,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 
 			a.proc_onlifetime_expired = (a : *Actor) {
 				console_deinteract(a);
-				play_sound(.Pause);
+				play_sound("SFX_pause");
 			}
 		}
 
@@ -1579,7 +1581,9 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 			a.proc_onhit = (a0 : *Actor, a1 : *Actor) {
 				if is_holding_item(a1) {
 					item_drop(a1);
-					play_sound(.Death, vol_min=0.5, vol_max=0.6, pitch_min=0.95, pitch_max=1.1);
+					play_sound("SFX_death");
+					//@CLEAN
+					//play_sound(.Death, vol_min=0.5, vol_max=0.6, pitch_min=0.95, pitch_max=1.1);
 				}
 			}
 		}
@@ -1623,7 +1627,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 						}
 					}
 				}
-				play_sound(.Pause);
+				play_sound("SFX_pause");
 			}
 
 			a.proc_on_interact = (a : *Actor, interactor : *Actor) {
@@ -1658,10 +1662,10 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 					if a0.counter <= 0 {
 						print("!!! BIG UNLOCK !!!\n");
 						a0.body.type = .Inactive;
-						play_sound(.RoundComplete);
+						play_sound("SFX_round_complete");
 					}
 					else {
-						play_sound(.RoundBegin);
+						play_sound("SFX_round_begin");
 					}
 				}
 			}
@@ -1795,7 +1799,7 @@ console_interact_a :: (a : *Actor, interactor : *Actor) {
 	}
 
 	sprite_step(*a.sprite);
-	play_sound(.RoundBegin);
+	play_sound("SFX_round_begin");
 }
 
 console_deinteract :: (a : *Actor) {
@@ -1865,7 +1869,8 @@ item_pickup :: (item : *Actor, owner : *Actor) {
 	assert(owner != null);
 
 	if !can_pickup_item(item, owner) {
-		sfx := play_sound(.PickupStart, vol_min=0.15, vol_max=0.2, pitch_min=0.4, pitch_max=0.5);
+		sfx := play_sound("SFX_pickup");
+		//@CLEAN sfx := play_sound(.PickupStart, vol_min=0.15, vol_max=0.2, pitch_min=0.4, pitch_max=0.5);
 		return;
 	}
 
@@ -1880,7 +1885,7 @@ item_pickup :: (item : *Actor, owner : *Actor) {
 	if item.proc_on_pickup 
 		item.proc_on_pickup(item);
 
-	sfx := play_sound(.PickupStart);
+	sfx := play_sound("SFX_pickup");
 	if sfx {
 		sfx.user_volume_scale = random_get_within_range(0.15, 0.2);
 		sfx.rate_scale = random_get_within_range(0.7, 0.8); 
@@ -1901,7 +1906,7 @@ item_drop :: (owner : *Actor) {
 	if length_squared(owner.position - owner.prev_position) > 0 {
 		item.velocity = owner.direction * hero_throw_strength;
 
-		sfx := play_sound(.PickupThrow);
+		sfx := play_sound("SFX_throw");
 		if sfx {
 			sfx.user_volume_scale = random_get_within_range(0.15, 0.2);
 			sfx.rate_scale = random_get_within_range(0.7, 0.8); 
@@ -1909,7 +1914,8 @@ item_drop :: (owner : *Actor) {
 	}
 	else
 	{
-		play_sound(.PickupDrop, vol_min=0.15, vol_max=0.2, pitch_min=0.6, pitch_max=0.7);
+		play_sound("SFX_throw");
+		//@CLEAN play_sound(.PickupDrop, vol_min=0.15, vol_max=0.2, pitch_min=0.6, pitch_max=0.7);
 	}
 
 	detach(item);
@@ -1942,13 +1948,14 @@ sign_show :: (message : string) {
 	print("sign interact: message=%\n", message);
 	active_sign.enabled = true;
 	active_sign.message = message;
-	play_sound(.Pause);
+	play_sound("SFX_pause");
 }
 
 sign_hide :: () {
 	print("sign hide\n");
 	active_sign.enabled = false;
-	play_sound(.Pause, pitch_min=0.85, pitch_max=0.85);
+	play_sound("SFX_pause");
+	//@CLEAN play_sound(.Pause, pitch_min=0.85, pitch_max=0.85);
 }
 
 // draw a posted note with message text

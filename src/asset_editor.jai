@@ -29,6 +29,7 @@ edit_type := AssetType.Texture;
 
 texture_asset : *TextureAsset;
 sprite_asset : *Sprite;
+sound_asset : *SoundAsset;
 
 sprite_scale : float = 4.0;
 file_scroll : float = 0.0;
@@ -39,11 +40,9 @@ asset_editor_new :: (type : AssetType) {
 	edit_type = type;
 
 	if type=={
-		case .Texture; 
-			texture_asset = texture_alloc();
-
-		case .Sprite; 
-			sprite_asset = sprite_alloc();
+		case .Texture;  texture_asset = texture_alloc();
+		case .Sprite;  sprite_asset = sprite_alloc();
+		case .Sound;  sound_asset = sound_alloc();
 	}
 }
 
@@ -124,14 +123,14 @@ render_subwindow_mode :: (state: *Subwindow_State, r: Rect, data: *void) {
 	}
 }
 
-FILTER_TYPES :: 3;
-file_filter_all :: "All";
-file_filter_textures :: "Textures";
-file_filter_sprites :: "Sprites";
+AssetFilterType :: enum {
+	All;
+	Textures;
+	Sprites;
+	Sounds;
+}
 
-file_filters : [FILTER_TYPES] string;
 file_filter_index : s32 = 0;
-
 
 render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	p := 4.;
@@ -142,19 +141,19 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	// category filters
 	rcat := Rect.{r.x, r.y+r.h-lh, r.w, lh};
 
-	//@TODO annoying, should declare this statically but I'm not sure how
-	file_filters[0] = file_filter_all;
-	file_filters[1] = file_filter_textures;
-	file_filters[2] = file_filter_sprites;
-	changed, state := dropdown(rcat, file_filters, *file_filter_index, *hud_theme.dropdown_theme);
+	filters := enum_names(AssetFilterType);
+	changed, state := dropdown(rcat, filters, *file_filter_index, *hud_theme.dropdown_theme);
 
 	// ~~~ Asset File Selection ~~~
 
 	rass := Rect.{r.x, r.y+r.h-(lh*2), r.w, r.h-(lh*2)};
 	layout := VerticalLayout.{ root = .{rass.x, rass.y, rass.w, lh }, direction=.Down };
-	show_all := file_filter_index == 0;
-	show_textures := show_all || file_filter_index==1;
-	show_sprites := show_all || file_filter_index==2;
+
+	filter := cast(AssetFilterType)file_filter_index;
+	show_all := filter == .All;
+	show_textures := show_all || filter==.Textures;
+	show_sprites := show_all || filter==.Sprites;
+	show_sounds := show_all || filter==.Sounds;
 
 	//state, left_or_top, right_or_bottom, div := slidable_region(r, *hud_theme.slidable_region_theme);
 	//region, rin := begin_scrollable_region(rass);
@@ -179,6 +178,16 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 		}
 	}
 
+	if show_sounds {
+		for sfx : assets.sounds {
+			if button(ui_next(*layout), sfx.guid, theme, identifier=layout.line) { 
+				sound_asset = sfx;
+				edit_type = .Sound;
+				print("Editting Sound: %\n", sfx.guid);
+			}
+		}
+	}
+
 	//end_scrollable_region(region, rin.x+rin.w, rin.y, *file_scroll);
 	//finish(state);
 }
@@ -187,6 +196,7 @@ render_subwindow_view :: (state: *Subwindow_State, r: Rect, data: *void) {
 	if edit_type== {
 		case .Texture; 	render_subwindow_view_texture(state, r, data);
 		case .Sprite; 	render_subwindow_view_sprite(state, r, data);
+		case .Sound; 	render_subwindow_view_sound(state, r, data);
 	}
 }
 
@@ -584,4 +594,55 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 		ui_label(*layout, "flip_y: %", sprite_asset.flip_y);
 		ui_label(*layout, "tint_mult: %", sprite_asset.tint_mult);
 	}
+}
+
+
+render_subwindow_view_sound :: (state: *Subwindow_State, r: Rect, data: *void) {
+	if sound_asset == null return;
+
+	//line := 1; @CLEAN
+	p := 4.;
+	lh := cast(float)hud_font_pixel_height+p;
+	btn_theme := *hud_theme.button_theme;
+	btn_theme.alignment = .Left;
+	label_theme := *hud_theme.label_theme;
+	label_theme.alignment = .Left;
+	text_theme := hud_theme.text_input_theme;
+	text_theme.alignment = .Left;
+	text_theme.font = hud_font;
+
+	// details panel
+	rdetails := Rect.{r.x, r.y, r.w*.4, r.h};
+	layout := VerticalLayout.{ root=.{rdetails.x, rdetails.y+r.h-lh, rdetails.w, lh}, direction=.Down };
+
+	ui_label(*layout, "Asset Type: Sound");
+
+	if button(ui_next(*layout), "Save") { 
+		sound_save(sound_asset); 
+		//@CLEAN sound_load(sound_asset.guid); //@TODO feels dumb to immediately reload
+	}
+	
+	ui_label(*layout, "GUID: %", sound_asset.guid);
+	{
+		action, text, state := text_input(ui_next(*layout), sound_asset.guid, *text_theme);
+		if action & .ENTERED {
+			sound_set_guid(sound_asset, text);
+		}
+	}
+	
+	ui_label(*layout, "Asset path: %", sound_asset.path);
+
+	ui_label(*layout, "Sound wav path: %", sound_asset.source_path);
+	{
+		action, text, state := text_input(ui_next(*layout), sound_asset.source_path, *text_theme);
+		if action & .ENTERED {
+			string_reset(*sound_asset.source_path);
+			sound_asset.source_path = sprint(text);
+			sound_resolve(sound_asset);
+		}
+	}
+
+	ui_line(*layout);
+	if button(ui_next(*layout), "Test Sound") { play_sound(sound_asset); }
+	if button(ui_next(*layout), "Test Sound by GUID") { play_sound(sound_asset.guid); }
 }

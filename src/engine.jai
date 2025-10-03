@@ -567,6 +567,7 @@ update_mouse :: (){
 
 MAX_ASSETS_TEXTURES :: 4096;
 MAX_ASSETS_SPRITES :: 4096;
+MAX_ASSETS_SOUNDS :: 4096;
 
 assets : AssetManager;
 
@@ -577,19 +578,24 @@ AssetManager :: struct {
 
 	sprites : Pool(Sprite, MAX_ASSETS_SPRITES);
 	sprite_table : Table(string, *Sprite);
+
+	sounds : Pool(SoundAsset, MAX_ASSETS_SOUNDS);
+	sounds_table : Table(string, *SoundAsset);
 }
 
 
 assets_init :: () {
-	{//@TODO remove after asset refactor
-		print("[OLD] Loading legacy assets\n");
-		_OLD_init_sound();
-	}
+	//@CLEAN
+	//{//@TODO remove after asset refactor
+	//	print("[OLD] Loading legacy assets\n");
+	//	_OLD_init_sound();
+	//}
 	
 	print("Loading ALL available assets | dir=%\n", asset_path);
 
 	init(*assets.texture_table, MAX_ASSETS_TEXTURES);
 	init(*assets.sprite_table, MAX_ASSETS_SPRITES);
+	init(*assets.sounds_table, MAX_ASSETS_SOUNDS);
 
 	files := file_list(asset_path);
 	for files {
@@ -599,6 +605,7 @@ assets_init :: () {
 
 		if contains(filename, TEXTURE_EXT) 	texture_load(filename);
 		if contains(filename, SPRITE_EXT) 	sprite_load(filename);
+		if contains(filename, SOUNDS_EXT) 	sound_load(filename);
 	}
 
 	// assets loaded, time to resolve intra-asset dependencies
@@ -610,10 +617,13 @@ assets_init :: () {
 assets_reset :: () {
 	print("Resetting Asset Management\n");
 	pool_reset(*assets.textures);
-	pool_reset(*assets.sprites);
-
 	table_reset(*assets.texture_table);
+
+	pool_reset(*assets.sprites);
 	table_reset(*assets.sprite_table);
+
+	pool_reset(*assets.sounds);
+	table_reset(*assets.sounds_table);
 }
 
 
@@ -989,22 +999,136 @@ sprite_resume :: (sprite : *Sprite) {
 	sprite.playing = true;
 }
 
+
 // ~~ Sound ~~
 
-SfxAsset :: struct {
+_OLD_SfxAsset :: struct {
 	id : s64;
 	name : string;
 	data : Sound_Data;
 }
 
-load_sound :: (name: string) -> Sound_Data {
+SoundAsset :: struct {
+	VERSION :: 1;
+	guid : string;
+	path : string; //relative path of this asset
+	source_path : string; //path to source .wav this asset wraps
+	sound : Sound_Data;
+}
+
+SOUNDS_EXT :: "sfxasset";
+
+is_valid :: (sfx : *SoundAsset) -> bool {
+	return is_valid(sfx.guid);
+}
+
+sound_alloc :: () -> *SoundAsset {
+	return pool_alloc(*assets.sounds);
+}
+
+sound_save :: (sfx : *SoundAsset) {
+	builder: String_Builder;
+	init_string_builder(*builder);
+
+	ver := sfx.VERSION;
+	append(*builder, cast(*u8)*ver, size_of(s64));
+
+	guid_len := cast(*u8)*sfx.guid.count;
+	append(*builder, guid_len, size_of(s64));
+	append(*builder, sfx.guid);
+
+	src_len := cast(*u8)*sfx.source_path.count;
+	append(*builder, src_len, size_of(s64));
+	append(*builder, sfx.source_path);
+
+	path := tprint("%/%.%", config.asset_folder, sfx.guid, SOUNDS_EXT);
+	write_entire_file(path, *builder);
+	reset(*builder);
+	print("Saved %\n", path);
+
+	if !table_contains(*assets.sounds_table, sfx.guid) {
+		print("\tSFX table, initial update, %", sfx.guid);
+		table_set(*assets.sounds_table, sfx.guid, sfx);
+	}
+}
+
+sound_load :: (filename : string) -> *SoundAsset{
+	path := tprint("%/%", config.asset_folder, filename);
+	buffer, success := read_entire_file(path);
+
+	if !success {
+		print("Failed to load asset: %\n", path);
+		return null;
+	}
+
+	sfx := sound_alloc();
+
+	// version
+	VERSION := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
+	assert(VERSION == sfx.VERSION, "ver=%", VERSION);
+
+	// guid
+	guid_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*guid_len, size_of(s64));
+	sfx.guid = alloc_string(guid_len);
+	consume_u8_and_length(*buffer, sfx.guid.data, guid_len);
+	
+	// texture source
+	src_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
+	sfx.source_path = alloc_string(src_len);
+	consume_u8_and_length(*buffer, sfx.source_path.data, src_len);
+
+	sound_resolve(sfx);
+
+	//@TODO leak?
+	sfx.path = sprint("%/%.%", config.asset_folder, sfx.guid, TEXTURE_EXT);
+
+	assert(!table_contains(*assets.sounds_table, sfx.guid), "%", sfx.guid);
+	table_set(*assets.sounds_table, sfx.guid, sfx);
+
+	print("\tLoaded Sound: file=% | GUID=%\n", filename, sfx.guid);
+	return sfx;
+}
+
+load_raw_sound :: (name: string) -> Sound_Data {
     path := tprint("%/sound/%", asset_path, name);
     return load_audio_file(path);
+}
+
+sound_resolve :: (sfx : *SoundAsset) {
+	sfx.sound = load_raw_sound(sfx.source_path);
+	assert(sfx.sound.loaded, "Sound data was not loaded, path=%", sfx.path);
+}
+
+sound_set_guid :: (sfx : *SoundAsset, guid : string) {
+	string_reset(*sfx.guid);
+	sfx.guid = sprint(guid);
+	string_reset(*sfx.path);
+	sfx.path = sprint("%/%.%", config.asset_folder, guid, SOUNDS_EXT);
+}
+
+get_sound :: (guid : string) -> *SoundAsset {
+	success, result := table_find_new(*assets.sounds_table, guid);
+	assert(success, "%", guid);
+	assert(result != null);
+	return result;
+}
+
+play_sound :: (guid : string) -> *Sound_Stream {
+	sfx := get_sound(guid);
+	return play_sound(sfx);
+}
+
+play_sound :: (sfx : *SoundAsset) -> *Sound_Stream {
+	return play_sound(*sfx.sound);
 }
 
 //@TODO need play_sound_random(pitch_min, pitch_max, vol_min, vol_max)
 play_sound :: (data: *Sound_Data, category := Sound_Category.GENERAL_SFX) -> *Sound_Stream 
 {
+	assert(data.loaded, "Sound data was not loaded");
     stream := Sound.make_stream(data, category);
     start_playing(stream);
     return stream;

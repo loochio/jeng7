@@ -3,7 +3,7 @@
 
 // ~~~~~~~~~~~ sfx ~~~~~~~~~~~ 
 
-
+/* @CLEAN
 Sfx_ID :: enum s64 {
 	Pause;
 	RoundBegin;
@@ -21,7 +21,7 @@ Sfx_ID :: enum s64 {
 _OLD_init_sound :: () {
 	load :: (_id : Sfx_ID, _name : string) {
 		sfx_assets[_id] = .{ id=xx _id, name=_name};
-		sfx_assets[_id].data = load_sound(_name);
+		sfx_assets[_id].data = load_raw_sound(_name);
     	assert(sfx_assets[_id].data.loaded, "Sound failed to load: %", _name);
 	}
 
@@ -36,7 +36,7 @@ _OLD_init_sound :: () {
 	load(.Warp, 			"e16_Bubble_heavy_1.wav");
 }
 
-sfx_assets : [Sfx_ID.COUNT] SfxAsset; 
+sfx_assets : [Sfx_ID.COUNT] _OLD_SfxAsset; 
 
 //@TODO probably merge this API with engine.play_sound()
 play_sound :: (id : Sfx_ID, vol_min := 1., vol_max := 1., pitch_min := 1., pitch_max := 1.) -> *Sound_Stream {
@@ -47,3 +47,4 @@ play_sound :: (id : Sfx_ID, vol_min := 1., vol_max := 1., pitch_min := 1., pitch
     }
     return sfx;
 }
+*/
