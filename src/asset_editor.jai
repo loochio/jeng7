@@ -20,7 +20,6 @@ subwindow_info_view : Subwindow_Info;
 AssetType :: enum u8{
 	Texture;
 	Sprite;
-	SpriteController;
 	Sound;
 }
 
@@ -96,33 +95,10 @@ asset_editor_render :: (dt : float) {
 
 
 render_subwindow_mode :: (state: *Subwindow_State, r: Rect, data: *void) {
-	line := 1;
-	p := 4.;
-	lh := cast(float)hud_font_pixel_height+p;
-	theme := *hud_theme.button_theme;
-	theme.alignment = .Left;
-
-	{ // texture 
-		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, "New Texture", theme) { asset_editor_new(.Texture); }
-		line += 1;
-	}
-
-	{ // sprite 
-		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, "New Sprite", theme) { asset_editor_new(.Sprite); }
-		line += 1;
-	}
-	{ // sprite controller
-		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, "New Sprite Controller", theme) { asset_editor_new(.SpriteController); }
-		line += 1;
-	}
-	{ // sfx
-		r0 := Rect.{r.x, r.y+r.h-(lh*line), r.w, lh};
-		if button(r0, "New SFX", theme) { asset_editor_new(.Sound); }
-		line += 1;
-	}
+	layout := VerticalLayout.{ root=.{r.x, r.y, r.w, (cast(float)hud_font_pixel_height+4.)} };
+	if button(ui_next(*layout), "New Texture") { asset_editor_new(.Texture); }
+	if button(ui_next(*layout), "New Sprite") { asset_editor_new(.Sprite); }
+	if button(ui_next(*layout), "New Sound") { asset_editor_new(.Sound); }
 }
 
 AssetFilterType :: enum {
