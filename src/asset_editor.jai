@@ -21,7 +21,6 @@ AssetType :: enum u8{
 	Texture;
 	Sprite;
 	SpriteController;
-
 	Sound;
 }
 
@@ -336,35 +335,6 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 	rd := Rect.{r.x, r.y, r.w*0.4, r.h};
 	draw_rect(rd, G_BLACK);
 
-	/* @TODO attempt at doing layouts, still tedious
-	{
-		layout := VerticalLayout.{ root=.{rd.x, rd.y, rd.w, lh} };
-
-		ui_label(*layout, "Asset Type: Sprite");
-
-		{
-			rb := ui_next(*layout);
-			rb.w *= 0.25;
-			if button(rb, "Save") { sprite_save(sprite_asset); }
-		}
-
-		{
-			r0 := ui_next(*layout);
-			r0.w *= 0.25;
-			ui_label(*r0, layout.line, r0.h, "Name");
-
-			r1 := r0;
-			r1.x = r0.x+r0.w;
-			r1.w = r0.w*3;
-			action, text, state := text_input(r1, sprite_asset.guid, *text_theme);
-			if action & .ENTERED {
-				sprite_set_guid(sprite_asset, text);
-			}
-		}
-	}
-	*/
-
-
 	line=1;
 
 	{
@@ -600,7 +570,6 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 render_subwindow_view_sound :: (state: *Subwindow_State, r: Rect, data: *void) {
 	if sound_asset == null return;
 
-	//line := 1; @CLEAN
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	btn_theme := *hud_theme.button_theme;
@@ -617,10 +586,7 @@ render_subwindow_view_sound :: (state: *Subwindow_State, r: Rect, data: *void) {
 
 	ui_label(*layout, "Asset Type: Sound");
 
-	if button(ui_next(*layout), "Save") { 
-		sound_save(sound_asset); 
-		//@CLEAN sound_load(sound_asset.guid); //@TODO feels dumb to immediately reload
-	}
+	if button(ui_next(*layout), "Save") { sound_save(sound_asset); }
 	
 	ui_label(*layout, "GUID: %", sound_asset.guid);
 	{

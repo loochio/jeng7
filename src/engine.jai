@@ -75,16 +75,15 @@ hud_font : *Dynamic_Font;
 hud_font_factor := 0.025;
 hud_font_pixel_height := 0;
 
+hud_current_theme: s32 = xx Default_Themes.Blood_Vampire;
 //hud_current_theme: s32 = xx Default_Themes.Default;
 //hud_current_theme: s32 = xx Default_Themes.Grayscale;
 //hud_current_theme: s32 = xx Default_Themes.Bentonite;
 //hud_current_theme: s32 = xx Default_Themes.Nimbus;
-hud_current_theme: s32 = xx Default_Themes.Blood_Vampire;
 //hud_current_theme: s32 = xx Default_Themes.Freddie_Freeloader;
 //hud_current_theme: s32 = xx Default_Themes.HIGH_CONTRAST;
 
 hud_theme: Overall_Theme;
-terminal_enabled := false;
 
 // Input
 mouse_pos_window : Vector2;
@@ -92,6 +91,7 @@ input_mod_ctrl := false;
 input_mod_alt := false;
 input_mod_shift := false;
 ui_hit_this_frame := false;
+terminal_enabled := false;
 
 Camera :: struct {
 	position : Vector2;
@@ -585,12 +585,6 @@ AssetManager :: struct {
 
 
 assets_init :: () {
-	//@CLEAN
-	//{//@TODO remove after asset refactor
-	//	print("[OLD] Loading legacy assets\n");
-	//	_OLD_init_sound();
-	//}
-	
 	print("Loading ALL available assets | dir=%\n", asset_path);
 
 	init(*assets.texture_table, MAX_ASSETS_TEXTURES);
@@ -1002,11 +996,12 @@ sprite_resume :: (sprite : *Sprite) {
 
 // ~~ Sound ~~
 
-_OLD_SfxAsset :: struct {
-	id : s64;
-	name : string;
-	data : Sound_Data;
-}
+//@CLEAN
+//_OLD_SfxAsset :: struct {
+//	id : s64;
+//	name : string;
+//	data : Sound_Data;
+//}
 
 SoundAsset :: struct {
 	VERSION :: 1;
@@ -1133,6 +1128,18 @@ play_sound :: (data: *Sound_Data, category := Sound_Category.GENERAL_SFX) -> *So
     start_playing(stream);
     return stream;
 }
+
+//@TODO probably merge this API with engine.play_sound()
+/*
+play_sound :: (id : Sfx_ID, vol_min := 1., vol_max := 1., pitch_min := 1., pitch_max := 1.) -> *Sound_Stream {
+	sfx := play_sound(*sfx_assets[id].data);
+    if sfx {
+    	sfx.user_volume_scale = random_get_within_range(vol_min, vol_max);
+		sfx.rate_scale = random_get_within_range(pitch_min, pitch_max); 
+    }
+    return sfx;
+}
+*/
 
 play_music :: (data: *Sound_Data) {
 	assert(music_stream == null);
@@ -1452,5 +1459,4 @@ using Sound :: #import "Sound_Player";
 #import "Hash_Table";
 #import "Hash";
 
-#load "assets.jai";
 #load "gfx.jai";
