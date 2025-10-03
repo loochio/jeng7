@@ -346,16 +346,16 @@ game_render :: (dt : float) {
 	}
 	
 	{ // Active World, recursive rendering
-		ACTIVE_WORLD_CLIP_SIZE :: 440.;
-		clip_size_x := scalar_to_window(ACTIVE_WORLD_CLIP_SIZE) * 1.25;
-		clip_size_y := scalar_to_window(ACTIVE_WORLD_CLIP_SIZE);
+		active_world_clip_size := window_height * 0.9;
+		clip_size_x := active_world_clip_size * 1.25;
+		clip_size_y := active_world_clip_size;
 		sizex := clip_size_x;
 		sizey := clip_size_y;
 
 		// only scale the exit (@TODO for now)
 		if active_world.transition_world != null && !active_world.transition_enter {
 			assert(active_world.transition_progress >= 0);
-			sc := SUBCLIP_SIZE_DEFAULT;
+			sc := scalar_to_window(SUBCLIP_SIZE_DEFAULT);
 			dt := active_world.transition_progress;
 			sizex = lerp(clip_size_x, sc, dt);
 			sizey = lerp(clip_size_y, sc, dt);
@@ -848,7 +848,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 
 WORLD_NESTED_SCALE :: 0.5;
 WORLD_NESTED_SCALE_VEC :: Vector2.{WORLD_NESTED_SCALE, WORLD_NESTED_SCALE};
-SUBCLIP_SIZE_DEFAULT :: 200.;
+SUBCLIP_SIZE_DEFAULT :: 64.; // needs to match body size of WorldEntrance
 SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
 SUBCLIP_OUTLINE_THICKNESS :: 8.;
 WORLD_NESTED_TIME :: 0.15;
@@ -1042,7 +1042,7 @@ subworld_render := (a : *Actor, nests : float, window_clip : Box, pos_in_window 
 	subclip.y = pos_in_window.y;
 
 	// only widen this subclip for the target transition entrance
-	subclip_size := SUBCLIP_SIZE_DEFAULT;
+	subclip_size := scalar_to_window(SUBCLIP_SIZE_DEFAULT);
 
 	if a.world.transition_world != null &&  a.world.transition_world == a.child_world {
 		subclip_max := max(window_width*1.25, window_height*1.25);
@@ -1462,9 +1462,8 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 		case .WorldEntrance; {
 			a.flags |= .Interactable | .Pickupable;
 			a.body.type = .Kinematic;
-			//a.body.size = .{SUBCLIP_SIZE_DEFAULT/4.,SUBCLIP_SIZE_DEFAULT/4.}; @CLEAN
 			a.body.shape = .Box;
-			a.body.size = .{64,64};
+			a.body.size = .{SUBCLIP_SIZE_DEFAULT,SUBCLIP_SIZE_DEFAULT};
 			a.body.is_a = .Pawn;
 			a.body.collides_with = .Pawn | .Wall;
 			a.weight = 1;
