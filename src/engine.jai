@@ -908,7 +908,7 @@ sprite_set_guid :: (sprite : *Sprite, guid : string) {
 	sprite.path = sprint("%/%.%", config.asset_folder, guid, SPRITE_EXT);
 }
 
-draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}) {
+draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}, use_window_scale := true) {
 	if !sprite.initialized return;
 	if !sprite.visible return;
 
@@ -929,7 +929,7 @@ draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}) 
     uv2x := Vector2.{(subX+subW) / texW, (subY+subH) / texH};
     uv3x := Vector2.{subX / texW, (subY+subH) / texH};
 
-    ws := get_window_aspect_scale();
+    ws := ifx use_window_scale then get_window_aspect_scale() else 1.;
     h := Vector2.{frame.coords.w * .5 * ws * scale.x * forced_window_scale_x, 0};
     v := Vector2.{0, frame.coords.h * .5 * ws * scale.y * forced_window_scale_y};
 
@@ -1284,7 +1284,6 @@ VerticalGrowDirection :: enum {
 	Up;
 }
 
-
 ui_line :: (layout : *VerticalLayout) {
 	dir := ifx layout.direction == .Up then 1 else -1;
 	layout.line = ui_line(*layout.root, layout.line, dir);
@@ -1301,6 +1300,42 @@ ui_label :: (layout : *VerticalLayout, fmt : string, args : .. Any) {
 	label(r, txt, *hud_theme.label_theme);
 }
 
+ui_label :: (r : Rect, fmt : string, args : .. Any) {
+	txt := tprint(fmt, args);
+	label(r, txt, *hud_theme.label_theme);
+}
+
+GridLayout :: struct {
+	#as using vert_layout : VerticalLayout;
+
+	// represent some normalized % of width 
+	// Ex. [ 0.5, 0.5, 1 ] -> 25% | 25% | 50%
+	columns : []float;
+	column_pct : [..]float; 
+	column_rects : [..] Rect;
+}
+
+ui_grid_init :: (using lo : *GridLayout) {
+	// calc normalized col percents
+	total := 0.;
+	for columns { total += it; }
+	for columns { array_add(*column_pct, it / total); }
+
+	// calc column rects
+	xoffset := 0.;
+	for column_pct {
+		r : = Rect.{root.x+xoffset, root.y, root.w*it, root.h};
+		array_add(*column_rects, r);
+		xoffset += r.w;
+	}
+}
+
+ui_col :: (layout : *GridLayout, col := 0) -> Rect {
+	assert(col >= 0 && col < layout.column_rects.count);
+	r := layout.column_rects[col];
+	r.y = r.h + r.h*layout.line;
+	return r;
+}
 
 
 // Moving this out of the main loop for readability

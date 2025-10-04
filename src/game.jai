@@ -1126,18 +1126,17 @@ level_save :: (level : *Level) {
 	append(*builder, name_len, size_of(s64));
 	append(*builder, level.name);
 
-	{ // level spawners
-		count := cast(*u8)*level.spawners.count;
-		append(*builder, count, size_of(s64));
-		for * level.spawners {
-			spawner := cast(*u8)it;
-			append(*builder, spawner, size_of(ActorSpawner));
+	// level spawners
+	count := cast(*u8)*level.spawners.count;
+	append(*builder, count, size_of(s64));
+	for * level.spawners {
+		spawner := cast(*u8)it;
+		append(*builder, spawner, size_of(ActorSpawner));
 
-			// extra spawner data
-			len := cast(*u8)*it.data.count;
-			append(*builder, len, size_of(s64));
-			append(*builder, it.data);
-		}
+		// extra spawner data
+		len := cast(*u8)*it.data.count;
+		append(*builder, len, size_of(s64));
+		append(*builder, it.data);
 	}
 
 	write_entire_file(path, *builder);
@@ -1378,6 +1377,7 @@ is_valid_actor_spawner :: (type : ActorType) -> bool {
 	return type != .EMPTY;
 }
 
+//@TODO remove this old slow idea
 get_actor :: (aid : s64) -> *Actor {
 	for worlds {
 		for *a : it.actors {

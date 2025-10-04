@@ -118,7 +118,6 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 
 	// category filters
 	rcat := Rect.{r.x, r.y+r.h-lh, r.w, lh};
-
 	filters := enum_names(AssetFilterType);
 	changed, state := dropdown(rcat, filters, *file_filter_index, *hud_theme.dropdown_theme);
 
@@ -181,115 +180,61 @@ render_subwindow_view :: (state: *Subwindow_State, r: Rect, data: *void) {
 render_subwindow_view_texture :: (state: *Subwindow_State, r: Rect, data: *void) {
 	if texture_asset == null return;
 
-	line := 1;
-	p := 4.;
-	lh := cast(float)hud_font_pixel_height+p;
-	btn_theme := *hud_theme.button_theme;
-	btn_theme.alignment = .Left;
-	label_theme := *hud_theme.label_theme;
-	label_theme.alignment = .Left;
+	lh := cast(float)hud_font_pixel_height+4.;
+	hud_theme.label_theme.alignment = .Left;
 	text_theme := hud_theme.text_input_theme;
 	text_theme.alignment = .Left;
-	text_theme.font = hud_font;
 
 	// details
 	rd := Rect.{r.x, r.y, r.w*0.4, r.h};
-	draw_square(.{rd.x+rd.w/2., rd.y+rd.h/2.}, .{rd.w, rd.h}, G_BLACK);
-	line=1;
+	draw_rect(rd, G_BLACK);
 
+	layout := GridLayout.{ 
+		root=Rect.{rd.x, rd.y, rd.w, lh}, 
+		columns=float.[0.20, 0.80],
+	};
+	ui_grid_init(*layout);
+
+	ui_label(ui_col(*layout, 0), "Asset Type:");
+	ui_label(ui_col(*layout, 1), "Texture");
+	ui_line(*layout);
+
+	if button(ui_col(*layout, 0), "Save") { texture_save(texture_asset); }
+	ui_line(*layout);
+
+	ui_label(ui_col(*layout, 0), "GUID");
 	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
-		label(r0, "Asset Type: Texture", label_theme);
-		line += 1;
+		action, text, state := text_input(ui_col(*layout, 1), texture_asset.guid, *text_theme);
+		if action & .ENTERED { texture_rename(texture_asset, text); }
 	}
+	ui_line(*layout);
 
-	{ // save
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		if button(r0, "Save", btn_theme) { 
-			texture_save(texture_asset);
-		}
-		line += 1;
-	}
+	ui_label(ui_col(*layout, 0), "Asset Name:");
+	ui_label(ui_col(*layout, 1), texture_asset.guid);
+	ui_line(*layout);
 
+	ui_label(ui_col(*layout, 0), "Texture Path:");
 	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "GUID", label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		action, text, state := text_input(r1, texture_asset.guid, *text_theme);
-		if action & .ENTERED {
-			texture_rename(texture_asset, text);
-		}
-		line += 1;
-	}
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		text := tprint("Asset Name:");
-		label(r0, text, label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		label(r1, texture_asset.guid, label_theme);
-
-		line += 1;
-	}
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		text := tprint("Asset Path:");
-		label(r0, text, label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		label(r1, texture_asset.path, label_theme);
-
-		line += 1;
-	}
-
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "Texture Path:", label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		action, text, state := text_input(r1, texture_asset.source_path, *text_theme);
+		action, text, _ := text_input(ui_col(*layout, 1), texture_asset.source_path, *text_theme);
 		if action & .ENTERED {
 			string_reset(*texture_asset.source_path);
 			texture_asset.source_path = sprint(text);
 			texture_load_from_src(texture_asset);
 		}
-		line += 1;
 	}
+	ui_line(*layout);
 
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "Source Path:", label_theme);
+	ui_label(ui_col(*layout, 0), "Source Path:");
+	src_txt := tprint("%/%", img_path, texture_asset.source_path);
+	ui_label(ui_col(*layout, 1), src_txt);
+	ui_line(*layout);
 
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		text := tprint("%/%", img_path, texture_asset.source_path);
-		label(r1, text, label_theme);
+	ui_label(ui_col(*layout, 0), "Dimension:");
+	dim_txt := tprint("% x %", texture_asset.texture.width, texture_asset.texture.height);
+	ui_label(ui_col(*layout, 1), dim_txt);
+	ui_line(*layout);
 
-		line += 1;
-	}
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "Dimensions:", label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		text := tprint("% x % (px, w X h)", texture_asset.texture.width, texture_asset.texture.height);
-		label(r1, text, label_theme);
-
-		line += 1;
-	}
-
+	// draw selected texture on the right
 	rview := Rect.{r.x+rd.w, r.y, r.w-rd.w, r.h};
 	draw_texture(*texture_asset.texture, .{rview.x+rview.w/2., rview.y+rview.h/2.}, scale=.{1,1}, outline=true);
 }
@@ -512,8 +457,7 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 		spos := Vector2.{pos.x, pos.y-200};
 		draw_square(spos, sprite_asset.frame_size*scale, GREY);
 
-		//@TODO hacky that we have to undo win aspect scale
-		draw_sprite(sprite_asset, spos, scale=scale/get_window_aspect_scale());
+		draw_sprite(sprite_asset, spos, scale=scale, use_window_scale=false);
 	}
 
 	// sprite controls
