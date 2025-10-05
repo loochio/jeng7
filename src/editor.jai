@@ -519,7 +519,6 @@ tool_tick_actor :: (t : *EditorTool, dt : float) {
 				);
 			}
 		}
-		
 	}
 
 	//@TODO [SHIFT] get selection, fill on release

@@ -112,7 +112,7 @@ CYAN 		:: Vector4.{0,1,1,1};
 
 
 engine_init :: (cfg : EngineConfig) {
-	print("Initializing ENGINE core\n");
+	log("Initializing ENGINE core\n");
 
 	config = cfg;
 	exe_path = get_path_of_running_executable();
@@ -219,7 +219,7 @@ engine_init :: (cfg : EngineConfig) {
 		}
 	}
 
-	print("Teardown ENGINE core\n");
+	log("Teardown ENGINE core\n");
 	sound_player_shutdown();
 	active_plugin.proc_deinit();
 	assets_reset();
@@ -235,7 +235,7 @@ set_plugin :: (plugin : string) {
 	}
 
 	if prev != null {
-		print("Plugin exiting from [%]\n", prev);
+		log("Plugin exiting from [%]\n", prev);
 		prev.proc_deinit();
 	}
 
@@ -267,115 +267,6 @@ resize_viewport :: () {
 	window_center = Vector2.{window_width/2., window_height/2.};
 	window_size = Vector2.{xx window_width, xx window_height};
 }
-
-draw_square :: (pos_window : Vector2, size : Vector2, color : Vector4) {
-	set_shader_for_color(true);
-    h := Vector2.{size.x * .5, 0};
-    v := Vector2.{0, size.y * .5};
-	p0 := pos_window - h - v;
-    p1 := pos_window + h - v;
-    p2 := pos_window + h + v;
-    p3 := pos_window - h + v;
-    immediate_quad(p0, p1, p2, p3, color);
-}
-
-draw_square_custom :: (pos_window : Vector2, size : Vector2, color : Vector4, type := ShaderType.Custom) {
-	set_shader(type);
-    h := Vector2.{size.x * .5, 0};
-    v := Vector2.{0, size.y * .5};
-	p0 := pos_window - h - v;
-    p1 := pos_window + h - v;
-    p2 := pos_window + h + v;
-    p3 := pos_window - h + v;
-    immediate_quad(p0, p1, p2, p3, color);
-}
-
-draw_box :: (box : Box, color : Vector4, thickness := 2.) {
-	t := thickness;
-	draw_square(.{box.x + box.w/2, box.y}, .{t, box.h}, color);
-	draw_square(.{box.x - box.w/2, box.y}, .{t, box.h}, color);
-	draw_square(.{box.x, box.y+box.h/2}, .{box.w, t}, color);
-	draw_square(.{box.x, box.y-box.h/2}, .{box.w, t}, color);
-}
-
-draw_rect :: (r : Rect, color : Vector4)
-{
-	draw_square(.{r.x+r.w/2.,r.y+r.h/2.}, .{r.w, r.h}, color);
-}
-
-// mostly copied from GetRect/color_picker.jai, draw_hsv_circle()
-draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : float = 0, color : Vector4,
-		percent_begin := 0.) 
-{
-	set_shader_for_color(true);
-	NUM_SEGMENTS :: 16;
-	last_p0, last_p1: Vector2 = ---;
-
-	for i: 0..NUM_SEGMENTS - 1 {
-        t := i / cast(float)(NUM_SEGMENTS - 1);
-
-        // start from 12 oclock
-        radians := TAU * (t+.25);
-        dir := Vector2.{cos(radians), sin(radians)};
-
-        p0 := center_window + dir * radius_outer;
-        p1 := center_window + dir * radius_inner;
-
-        // omit percentage of the circle
-        if (i != 0 && t > percent_begin) {
-        	immediate_triangle(to_vec3(last_p0), to_vec3(last_p1), to_vec3(p1), color, color, color);
-            immediate_triangle(to_vec3(last_p0), to_vec3(p1), to_vec3(p0), color, color, color);
-        }
-
-        last_p0 = p0;
-        last_p1 = p1;
-    }
-}
-
-draw_collider :: (collider : *Collider, window_pos : Vector2, win_size : Vector2) {
-	c := BLUE;
-	if collider.type == {
-		case .Dynamic; c = MAGENTA;
-		case .Trigger; c = YELLOW;
-		case .Inactive; c= WHITE;
-	}
-	if !collider.enabled c = RED;
-
-	p := window_pos;
-	if collider.shape== {
-		case .Circle; {
-			r := win_size.x;
-			draw_circle(p, radius_outer=r, radius_inner=r-2, color=c);
-		}
-		case .Box; {
-			box := Box.{p.x, p.y, win_size.x, win_size.y};
-			draw_box(box, c);
-		}
-	}
-}
-
-draw_texture :: (texture : *Texture, window_pos : Vector2, scale := Vector2.{1,1}, outline := false) {
-	width := texture.width * scale.x;
-	height := texture.height * scale.y;
-
-	if outline {
-		draw_box(.{window_pos.x, window_pos.y, width, height}, RED);
-	}
-
-	h := Vector2.{width*.5, 0};
-    v := Vector2.{0, height*.5};
-	p0 := window_pos - h - v;
-    p1 := window_pos + h - v;
-    p2 := window_pos + h + v;
-    p3 := window_pos - h + v;
-	set_shader_for_images(texture);
-
-	//@TODO move this down to gfx.jai
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    immediate_quad(p0, p1, p2, p3, WHITE);
-}
-
 
 
 // ~~~~~~~ Collision / Util ~~~~~~~ 
@@ -585,7 +476,7 @@ AssetManager :: struct {
 
 
 assets_init :: () {
-	print("Loading ALL available assets | dir=%\n", asset_path);
+	log("Loading ALL available assets | dir=%\n", asset_path);
 
 	init(*assets.texture_table, MAX_ASSETS_TEXTURES);
 	init(*assets.sprite_table, MAX_ASSETS_SPRITES);
@@ -609,7 +500,7 @@ assets_init :: () {
 }
 
 assets_reset :: () {
-	print("Resetting Asset Management\n");
+	log("Resetting Asset Management\n");
 	pool_reset(*assets.textures);
 	table_reset(*assets.texture_table);
 
@@ -639,7 +530,7 @@ is_valid :: (tx : *TextureAsset) -> bool {
 
 get_texture :: (guid : string) -> *TextureAsset {
 	success, result := table_find_new(*assets.texture_table, guid);
-	assert(success, "%", guid);
+	assert(success, "GUID not found: %", guid);
 	return result;
 }
 
@@ -665,7 +556,12 @@ texture_save :: (tx : *TextureAsset) {
 	path := tprint("%/%.%", config.asset_folder, tx.guid, TEXTURE_EXT);
 	write_entire_file(path, *builder);
 	reset(*builder);
-	print("Saved %\n", path);
+	log("Saved %\n", path);
+
+	if !table_contains(*assets.texture_table, tx.guid) {
+		log("\tTexture table, initial update, %", tx.guid);
+		table_set(*assets.texture_table, tx.guid, tx);
+	}
 }
 
 texture_load :: (filename : string) -> *TextureAsset{
@@ -673,7 +569,7 @@ texture_load :: (filename : string) -> *TextureAsset{
 	buffer, success := read_entire_file(path);
 
 	if !success {
-		print("Failed to load asset: %\n", path);
+		log_error("Failed to load asset: %\n", path);
 		return null;
 	}
 
@@ -703,7 +599,7 @@ texture_load :: (filename : string) -> *TextureAsset{
 	assert(!table_contains(*assets.texture_table, tx.guid), "%", tx.guid);
 	table_set(*assets.texture_table, tx.guid, tx);
 
-	print("\tLoaded Texture: file=% | GUID=%\n", filename, tx.guid);
+	log("\tLoaded Texture: file=% | GUID=%\n", filename, tx.guid);
 	return tx;
 }
 
@@ -727,7 +623,7 @@ texture_rename :: (tx : *TextureAsset, guid : string) {
 // ~~~~~~~ Sprites ~~~~~~~ 
 
 Sprite :: struct {
-	VERSION :: 1;
+	VERSION :: 2;
 
 	//@TODO duplicate, can be moved to Asset struct
 	guid : string;
@@ -742,6 +638,7 @@ Sprite :: struct {
 	default_flip_y := false;
 	offset : Vector2; // window_space
 	tint := WHITE;
+	shader_type := ShaderTexture.Default;
 
 	// runtime values
 	initialized := false; //@TODO convert these bools to enum_flags
@@ -804,6 +701,7 @@ sprite_save :: (asset : *Sprite) {
 	append(*builder, cast(*u8)*asset.loop, size_of(u8));
 	append(*builder, cast(*u8)*asset.default_flip_x, size_of(u8));
 	append(*builder, cast(*u8)*asset.default_flip_y, size_of(u8));
+	append(*builder, cast(*u8)*asset.shader_type, size_of(u32));
 
 	name_len := cast(*u8)*asset.guid.count;
 	append(*builder, name_len, size_of(s64));
@@ -817,7 +715,12 @@ sprite_save :: (asset : *Sprite) {
 	path := tprint("%/%.%", config.asset_folder, asset.guid, SPRITE_EXT);
 	write_entire_file(path, *builder);
 	reset(*builder);
-	print("Saved %\n", path);
+	log("Saved %\n", path);
+
+	if !table_contains(*assets.sprite_table, asset.guid) {
+		log("\tSprite table, initial update, %", asset.guid);
+		table_set(*assets.sprite_table, asset.guid, asset);
+	}
 }
 
 sprite_load :: (filename : string) -> *Sprite {
@@ -825,17 +728,27 @@ sprite_load :: (filename : string) -> *Sprite {
 	buffer, success := read_entire_file(path);
 
 	if !success {
-		print("Failed to load asset: %\n", path);
+		log_error("Failed to load asset: %\n", path);
 		return null;
 	}
 
 	spr := sprite_alloc();
 
-	// version
+	// version migration
 	VERSION := 0;
 	consume_u8_and_length(*buffer, cast(*u8)*VERSION, size_of(s64));
-	assert(VERSION == spr.VERSION, "ver=%", VERSION);
+	
+	// version mismatch, migrate our sprite
+	if VERSION != spr.VERSION {
+		if VERSION == 1 {
+			sprite_load_migration_v1_to_v2(spr, buffer);
+			return spr;
+		}
+		assert(false, "Failed to migrate version=%", spr.VERSION);
+		return null;
+	}
 
+	assert(VERSION == spr.VERSION, "ver=%", VERSION);
 	consume_u8_and_length(*buffer, cast(*u8)*spr.frame_count, size_of(s64));
 	consume_u8_and_length(*buffer, cast(*u8)*spr.frame_size, size_of(Vector2));
 	consume_u8_and_length(*buffer, cast(*u8)*spr.play_length, size_of(float));
@@ -844,6 +757,7 @@ sprite_load :: (filename : string) -> *Sprite {
 	consume_u8_and_length(*buffer, cast(*u8)*spr.loop, size_of(u8));
 	consume_u8_and_length(*buffer, cast(*u8)*spr.default_flip_x, size_of(u8));
 	consume_u8_and_length(*buffer, cast(*u8)*spr.default_flip_y, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.shader_type, size_of(u32));
 	
 	// guid
 	guid_len := 0;
@@ -863,16 +777,54 @@ sprite_load :: (filename : string) -> *Sprite {
 	assert(!table_contains(*assets.sprite_table, spr.guid), "%", spr.guid);
 	table_set(*assets.sprite_table, spr.guid, spr);
 
-	print("\tLoaded Sprite: file=% | GUID=%\n", filename, spr.guid);
+	log("\tLoaded Sprite: file=% | GUID=%\n", filename, spr.guid);
 	return spr;
 }
+
+//@TODO generalize this migration code
+sprite_load_migration_v1_to_v2 :: (spr : *Sprite, buffer : string) {
+	assert(false, "Migration disabled for now");
+}
+/* 
+sprite_load_migration_v1_to_v2 :: (spr : *Sprite, buffer : string) {
+	assert(spr.VERSION == 2, "ver=%", spr.VERSION);
+	consume_u8_and_length(*buffer, cast(*u8)*spr.frame_count, size_of(s64));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.frame_size, size_of(Vector2));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.play_length, size_of(float));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.offset, size_of(Vector2));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.tint, size_of(Vector4));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.loop, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.default_flip_x, size_of(u8));
+	consume_u8_and_length(*buffer, cast(*u8)*spr.default_flip_y, size_of(u8));
+	//consume_u8_and_length(*buffer, cast(*u8)*spr.shader_type, size_of(u32)); @CLEAN
+	
+	// guid
+	guid_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*guid_len, size_of(s64));
+	spr.guid = alloc_string(guid_len);
+	consume_u8_and_length(*buffer, spr.guid.data, guid_len);
+
+	//@TODO we aren't using this, we just define the path up there in sprite_save(..)
+	//spr.path = sprint("%/%.%", config.asset_folder, spr.guid, SPRITE_EXT);
+	
+	// texture source
+	src_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*src_len, size_of(s64));
+	spr.texture_guid = alloc_string(src_len);
+	consume_u8_and_length(*buffer, spr.texture_guid.data, src_len);
+
+	sprite_save(spr);
+
+	log("\tMigrated Sprite Ver% : GUID=%\n", spr.VERSION, spr.guid);
+}
+*/
 
 // set the raw texture pointer, recreate our frame array
 sprite_resolve :: (sprite : *Sprite) {
 	sprite.texture_asset = get_texture(sprite.texture_guid);
 
 	if sprite.texture_asset == null {
-		print("\tSprite texture not set yet. GUID=%\n", sprite.guid);
+		log_error("\tSprite texture not set yet. GUID=%\n", sprite.guid);
 		return;
 	}
 	
@@ -897,7 +849,7 @@ sprite_resolve :: (sprite : *Sprite) {
 
 	sprite.resolved = true;
 
-	print("\tSprite resolved, GUID=% | Tex.GUID=% frames=%\n", 
+	log("\tSprite resolved, GUID=% | Tex.GUID=% frames=%\n", 
 		sprite.guid, sprite.texture_asset.guid, sprite.frames.count);
 }
 
@@ -908,11 +860,37 @@ sprite_set_guid :: (sprite : *Sprite, guid : string) {
 	sprite.path = sprint("%/%.%", config.asset_folder, guid, SPRITE_EXT);
 }
 
+sprite_set_texture_guid :: (sprite : *Sprite, guid : string) {
+	string_reset(*sprite.texture_guid);
+	sprite.texture_guid = sprint(guid);
+	sprite_resolve(sprite);
+}
+
+sprite_set_frame_count :: (sprite: *Sprite, frame_count : s64) {
+	sprite.frame_count = frame_count;
+	sprite_resolve(sprite);
+}
+
+sprite_set_frame_width :: (sprite: *Sprite, width : float) {
+	sprite.frame_size.x = width;
+	sprite_resolve(sprite);
+}
+
+sprite_set_frame_height :: (sprite: *Sprite, height : float) {
+	sprite.frame_size.y = height;
+	sprite_resolve(sprite);
+}
+
+sprite_set_play_length :: (sprite : *Sprite, length : float) {
+	sprite.play_length = length;
+	sprite_resolve(sprite);
+}
+
 draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}, use_window_scale := true) {
 	if !sprite.initialized return;
 	if !sprite.visible return;
 
-	set_shader_for_images(sprite.texture);
+	set_shader(sprite.texture, sprite.shader_type);
     
     frame := sprite.frames[sprite.frame_current];
 
@@ -996,13 +974,6 @@ sprite_resume :: (sprite : *Sprite) {
 
 // ~~ Sound ~~
 
-//@CLEAN
-//_OLD_SfxAsset :: struct {
-//	id : s64;
-//	name : string;
-//	data : Sound_Data;
-//}
-
 SoundAsset :: struct {
 	VERSION :: 1;
 	guid : string;
@@ -1039,10 +1010,10 @@ sound_save :: (sfx : *SoundAsset) {
 	path := tprint("%/%.%", config.asset_folder, sfx.guid, SOUNDS_EXT);
 	write_entire_file(path, *builder);
 	reset(*builder);
-	print("Saved %\n", path);
+	log("Saved %\n", path);
 
 	if !table_contains(*assets.sounds_table, sfx.guid) {
-		print("\tSFX table, initial update, %", sfx.guid);
+		log("\tSFX table, initial update, %", sfx.guid);
 		table_set(*assets.sounds_table, sfx.guid, sfx);
 	}
 }
@@ -1052,7 +1023,7 @@ sound_load :: (filename : string) -> *SoundAsset{
 	buffer, success := read_entire_file(path);
 
 	if !success {
-		print("Failed to load asset: %\n", path);
+		log_error("Failed to load asset: %\n", path);
 		return null;
 	}
 
@@ -1083,7 +1054,7 @@ sound_load :: (filename : string) -> *SoundAsset{
 	assert(!table_contains(*assets.sounds_table, sfx.guid), "%", sfx.guid);
 	table_set(*assets.sounds_table, sfx.guid, sfx);
 
-	print("\tLoaded Sound: file=% | GUID=%\n", filename, sfx.guid);
+	log("\tLoaded Sound: file=% | GUID=%\n", filename, sfx.guid);
 	return sfx;
 }
 
@@ -1151,12 +1122,12 @@ play_music :: (data: *Sound_Data) {
 
 toggle_mute :: () {
 	if mute {
-		print("~~~ Sound UNMUTED ~~~\n");
+		log("~~~ Sound UNMUTED ~~~\n");
 		mute = false;
 		set_master_volume(1);
 	}
 	else {
-		print("~~~ Game MUTED ~~~\n");
+		log("~~~ Game MUTED ~~~\n");
 		mute = true;
 		set_master_volume(0);
 	}
@@ -1453,7 +1424,7 @@ register_commands :: () {
 	register_cmd("help", (args: .. Any) {
 		print("Registered Commands\n");
 		for terminal_cmds {
-			print("\t%\n", it.text);
+			log("\t%\n", it.text);
 		}
 	});
 

@@ -24,6 +24,17 @@ Gameplay Engine Tech Ideas
 Need to do an Aesthetic prototype.
 
 
+4 Oct 2025
+Building out tooling.
+Shifting focus to Aethetic Prototype?
+	- Pallet swapping idea
+
+Still need sprite controllers
+Particle System needs to be reimplemented
+
+
+~~~ Twitch Stuff ~~~
+
 27 Sept 2025 from crispy_penguin
 TODO: Fix later
 
@@ -55,18 +66,18 @@ level_start : string; 	// level the player will begin in
 game_paused := false;
 
 game_init :: () {
-	print("~~ Game Init ~~ \n");
+	log("~~ Game Init ~~ \n");
 	register_cheats();
 	game_begin();
 }
 
 game_deinit :: () {
 	game_end();
-	print("~~ Game Deinit ~~\n");
+	log("~~ Game Deinit ~~\n");
 }
 
 game_begin :: () {
-	print("~~ Game Begin ~~\n");
+	log("~~ Game Begin ~~\n");
 	game_paused = false;
 
 	//@TODO could move to generic engine.init(), reset flow would change a little for hot reload
@@ -96,11 +107,11 @@ game_begin :: () {
 		}
 	}
 
-	print("\tInitial world activation: %\n", active_world.name);
+	log("\tInitial world activation: %\n", active_world.name);
 }
 
 game_end :: () {
-	print("~~ Game End ~~\n");
+	log("~~ Game End ~~\n");
 
 	for worlds {
 		if !is_valid(*it) continue;
@@ -111,7 +122,7 @@ game_end :: () {
 }
 
 game_restart :: () {
-	print("Game Restart\n");
+	log("Game Restart\n");
 	game_end();
 	game_begin();
 }
@@ -442,6 +453,9 @@ game_render :: (dt : float) {
 			}
 		}
 	}
+
+	//@CLEAN temp
+	draw_gfx_test();
 }
 
 // ~~~ Worlds ~~~
@@ -551,6 +565,7 @@ print_world :: (world : *World, depth := 0) {
 	if !is_valid(world) return;
 
 	// formatting
+	//@OPTIMIZE remove print(), append to a string
 	print_depth :: (d : s64) {
 		while d >=0 {
 			print("-");
@@ -559,11 +574,11 @@ print_world :: (world : *World, depth := 0) {
 	}
 	print_depth(depth);
 
-	print("D% %\n", depth, world.name);
+	log("D% %\n", depth, world.name);
 	for world.actors {
 		if it.child_world == world {
 			print_depth(depth);
-			print("[SELF REF]] D% %\n", depth, world.name);
+			log("[SELF REF]] D% %\n", depth, world.name);
 			continue;
 		}
 		print_world(it.child_world, depth+1);
@@ -601,7 +616,7 @@ world_transition_begin :: (a : *Actor, world : *World = null) {
 	enter := world != null;
 	if !enter && a.world.parent == null {
 		//@TODO probably should setup a default parent world we always warp to
-		print("ERROR No parent world found\n");
+		log_error("ERROR No parent world found\n");
 		return;
 	}
 
@@ -644,13 +659,13 @@ world_transition_end :: (using world : *World) {
 }
 
 world_enter :: (a : *Actor, world : *World) {
-	print("world enter | type=%\n", a.type);
+	log("world enter | type=%\n", a.type);
 	// warp to the pos of target world's exit
 	pos := Vector2.{};
 	for world.actors {
 		if it.type == .WorldExit {
 			pos = it.position;
-			print("found exit position%\n", pos);
+			log("found exit position%\n", pos);
 			break;
 		}
 	}
@@ -662,7 +677,7 @@ world_enter :: (a : *Actor, world : *World) {
 }
 
 world_exit :: (a : *Actor) {
-	print("world EXIT | type=%\n", a.type);
+	log("world EXIT | type=%\n", a.type);
 	assert(a != null);
 	assert(a.world.parent != null);
 
@@ -698,7 +713,7 @@ world_exit :: (a : *Actor) {
 move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *Actor{
 	// block trying to reenter the same world
 	if actor.world == world {
-		print("reentering the same world | aid=% | type=%\n", actor.id, actor.type);
+		log("reentering the same world | aid=% | type=%\n", actor.id, actor.type);
 		actor.position = pos;
 		return actor;
 	}
@@ -706,7 +721,7 @@ move_actor_to_world :: (actor : *Actor, world : *World, pos := Vector2.{}) -> *A
 	// force blocked items to drop before we start moving memory between worlds
 	item := actor.held_item;
 	if item != null && (item.flags & .BlockWarping != 0) {
-		print("force dropping item=% | flags=%\n", item.type, item.flags);
+		log("force dropping item=% | flags=%\n", item.type, item.flags);
 		item_drop(actor);
 		item = null;
 	}
@@ -821,7 +836,7 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
 				a.proc_onlifetime_expired(a);
 
 			if a.flags & .DestroyAfterLifetime {
-				print("LIFETIME EXPIRATION type=%\n", a.type);
+				log("LIFETIME EXPIRATION type=%\n", a.type);
 				actor_free(a);
 			}
 		}
@@ -905,9 +920,8 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 		pos := Vector2.{window_clip.x, window_clip.y};
 		size := Vector2.{window_clip.w, window_clip.h};
 		color := world.background_fill * get_world_color(world);
-
-		//draw_square(.{window_clip.x, window_clip.y}, .{window_clip.w, window_clip.h}, color);
-		draw_square_custom(pos, size, color, .Smoke);
+		//draw_square(pos, size, color, .Smoke);
+		draw_square(pos, size, color);
 	}
 	
 	// sprite rendering, sorted by position.y
@@ -1141,7 +1155,7 @@ level_save :: (level : *Level) {
 
 	write_entire_file(path, *builder);
 	reset(*builder);
-	print("Saved %\n", path);
+	log("Saved %\n", path);
 }
 
 is_valid_level_name :: (name : string) -> bool {
@@ -1154,7 +1168,7 @@ level_load :: (name : string, level : *Level) -> bool {
 	buffer, success := read_entire_file(path);
 
 	if !success {
-		print("Failed to load level: %\n", path);
+		log_error("Failed to load level: %\n", path);
 		return false;
 	}
 
@@ -1186,7 +1200,7 @@ level_load :: (name : string, level : *Level) -> bool {
 			array_add(*level.spawners, spawner);
 		}
 		else{
-			print("\tFailed to parse spawner: % in level=%\n", spawner.type, level.name);
+			log_error("\tFailed to parse spawner: % in level=%\n", spawner.type, level.name);
 		}
 
 		{// Validation
@@ -1198,12 +1212,12 @@ level_load :: (name : string, level : *Level) -> bool {
 	}
 
 	if name != level.name {
-		print("\told name [%] detected on level=%, updating name\n", level.name, name);
+		log("\told name [%] detected on level=%, updating name\n", level.name, name);
 		string_reset(*level.name);
 		level.name = sprint(name);
 	}
 
-	print("LOADED: name=% | spawners=%\n", level.name, level.spawners.count);
+	log("LOADED: name=% | spawners=%\n", level.name, level.spawners.count);
 	return true;
 }
 
@@ -1659,7 +1673,7 @@ spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
 					sprite_step(*a0.sprite);
 
 					if a0.counter <= 0 {
-						print("!!! BIG UNLOCK !!!\n");
+						log("!!! BIG UNLOCK !!!\n");
 						a0.body.type = .Inactive;
 						play_sound("SFX_round_complete");
 					}
@@ -1701,7 +1715,7 @@ possess :: (target : *Actor, current : * Actor = null) {
 	assert(target.flags & .CanPossess != 0);
 	assert(target.flags & .Possessed == 0);
 
-	print("\n Possessed target=%\n", target.type);
+	log("\n Possessed target=%\n", target.type);
 	target.flags |= .Possessed;
 	target.world.focus = target;
 
@@ -1710,7 +1724,7 @@ possess :: (target : *Actor, current : * Actor = null) {
 		assert(current.flags & .Possessed != 0);
 		assert(current.world == target.world);
 		current.flags &= ~.Possessed;
-		print("\n \tunpossessed old=%\n", current.type);
+		log("\n \tunpossessed old=%\n", current.type);
 	}
 }
 
@@ -1944,14 +1958,14 @@ SignType :: enum s64 {
 active_sign : Sign;
 
 sign_show :: (message : string) {
-	print("sign interact: message=%\n", message);
+	log("sign interact: message=%\n", message);
 	active_sign.enabled = true;
 	active_sign.message = message;
 	play_sound("SFX_pause");
 }
 
 sign_hide :: () {
-	print("sign hide\n");
+	log("sign hide\n");
 	active_sign.enabled = false;
 	play_sound("SFX_pause");
 	//@CLEAN play_sound(.Pause, pitch_min=0.85, pitch_max=0.85);
@@ -2012,7 +2026,7 @@ register_cheats :: () {
 			name := tprint("%", arg);
 
 			if !exists(name) {
-				print("goto failed, level does not exist: %\n", name);
+				log_error("goto failed, level does not exist: %\n", name);
 				return;
 			}
 
@@ -2071,7 +2085,7 @@ set_configs :: (filename : string) {
 	defer(free(buffer));
 
 	if !success {
-		print("Failed to load config: %\n", path);
+		log_error("Failed to load config: %\n", path);
 		return;
 	}
 
@@ -2085,7 +2099,7 @@ set_configs :: (filename : string) {
 		statement := split(line, "=");
 
 		if statement.count != 2 {
-			print("\t[ERROR] malformed line: %\n", line);
+			log_error("\t[ERROR] malformed line: %\n", line);
 			continue;
 		}
 
@@ -2103,9 +2117,9 @@ set_configs :: (filename : string) {
 		}
 	}
 
-	print("~~~ Loaded configs: % ~~~\n", path);
-	print("\troot: %\n", level_root);
-	print("\tstart: %\n", level_start);
+	log("~~~ Loaded configs: % ~~~\n", path);
+	log("\troot: %\n", level_root);
+	log("\tstart: %\n", level_start);
 }
 
 
@@ -2140,46 +2154,6 @@ G_RED 			:: Vector4.{0.706, 0.322, 0.322, 1};
 G_RED2	 		:: Vector4.{0.502, 0.286, 0.227, 1};
 G_RED3 			:: Vector4.{0.929, 0.784, 0.769, 1};
 G_PINK	 		:: Vector4.{0.812, 0.541, 0.796, 1};
-
-
-//@TODO can probably roll this into a static array
-draw_pallet :: () {
-	d :: (index : s64, color : Vector4) {
-		size := Vector2.{16,16};
-		x := size.x * index + size.x;
-		draw_square(.{x, size.y/2}, size, color);
-	}
-	d(0, G_BLACK);
-	d(1, G_WHITE);
-	d(2, G_GREY);
-	d(3, G_GREY2);
-	d(4, G_GREY3);
-	d(5, G_GREY3b);
-	d(6, G_GREY4);
-
-	d(7, G_PURPLE);
-	d(8, G_PURPLE2);
-	d(9, G_PURPLE3);
-	d(10, G_BLUE);
-	d(11, G_BLUE2);
-	d(12, G_BLUE3);
-
-	d(13, G_TEAL);
-	d(14, G_TEAL2);
-	d(15, G_GREEN);
-	d(16, G_GREEN2);
-	d(17, G_GREEN3);
-	d(18, G_YELLOW);
-	d(19, G_YELLOW2);
-	d(20, G_YELLOW3);
-	d(21, G_ORANGE);
-	d(22, G_ORANGE2);
-	d(23, G_ORANGE3);
-	d(24, G_RED);
-	d(25, G_RED2);
-	d(26, G_RED3);
-	d(27, G_PINK);
-}
 
 
 #load "engine.jai";

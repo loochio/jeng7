@@ -2,53 +2,57 @@
 // Shaders n' shit
 
 
-ShaderType :: enum u8 {
+ShaderSolid :: enum u32 {
 	Color;
 	ColorNoBlend;
-	Texture;
-
-	Custom;
-	CustomBlend;
 	Smoke;
 }
 
-shader_custom := Shader.{
-	filename = "custom.glsl",
-	alpha_blend = false,
-};
+ShaderTexture :: enum u32 {
+	Default;
+	PalletTint;
+}
 
-shader_custom_blend := Shader.{
-	filename = "custom.glsl",
-	alpha_blend = true,
-};
+//@CLEAN old
+//shader_custom := Shader.{
+//	filename = "custom.glsl",
+//};
+//
+//shader_custom_blend := Shader.{
+//	filename = "custom.glsl",
+//	alpha_blend = true,
+//};
 
 shader_smoke := Shader.{
 	filename = "smoke.glsl",
 	alpha_blend = true,
 };
 
+shader_pallet_tint := Shader.{
+	filename = "pallet_tint.glsl",
+	alpha_blend = true,
+};
 
-//@CLEAN temp scratch zone while we're figuring this out
-shader_draw_test :: () {
-	//draw_square_custom(window_center, window_size*0.5, MAGENTA);
-	//c := MAGENTA;
-	//c.w = 0.5;
-	//draw_square_custom(window_center, window_size*0.25, c, .CustomBlend);
-	//draw_square_custom(window_center*.5, window_size*0.25, c, .Custom);
-	//draw_square_custom(window_center, window_size*0.5, c, .Color);
 
-	//draw_square_custom(window_center, window_size, G_WHITE, .Smoke);
+draw_gfx_test :: () {
+	tx := get_texture("T_m_block");
+	x := window_center.x * .25;
+	y := window_center.y;
+	draw_texture(*tx.texture, .{x,y*.25}, .{3,3}, shader=.PalletTint);
+	draw_texture(*tx.texture, .{x,y}, .{10, 10},  shader=.PalletTint);
+
+	tx_pallet := get_texture("T_pallet_0");
+	draw_texture(*tx_pallet.texture, .{x,y*.5}, .{30,30});
 }
 
-
 shader_init :: () {
-	print("Reloading shaders.\n");
-	shader_load(*shader_custom);
-	shader_load(*shader_custom_blend);
+	log("Reloading shaders.");
+	//shader_load(*shader_custom); @CLEAN
+	//shader_load(*shader_custom_blend);
 	shader_load(*shader_smoke);
+	shader_load(*shader_pallet_tint);
 
-	//@TODO do a DEVELOPER check for attributes/uniform locations
-	// remove the error log spam from the rendering loop
+	//@TODO  remove the error log spam from the rendering loop
 }
 
 shader_load :: (shader : *Shader) {
@@ -57,61 +61,75 @@ shader_load :: (shader : *Shader) {
 	defer free(buffer);
 
 	if !success {
-		print("Failed to open %\n", path);
+		log_error("Failed to open %\n", path);
 		return;
 	}
 
-	print("\tLoading shader [%]\n", path);
+	log("\tLoading shader [%]", path);
 	string_reset(*shader.text);
 	shader.text = sprint(buffer);
 	shader.gl_handle   = get_shader_program(buffer);
 }
 
-set_shader :: (shader : ShaderType, texture : *Texture = null) {
+set_shader :: (shader := ShaderSolid.Color) {
 	if shader== {
-		case .Color; {
-			set_shader_for_color(true);
-		}
-		case .ColorNoBlend; {
-			set_shader_for_color(false);
-		}
-		case .Texture; {
-			assert(texture != null);
-			//@TODO
-			set_shader_for_images(texture);
-			//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-		}
-		case .Custom; {
-			if context.simp.current_shader != *shader_custom {
-		        immediate_set_shader(*shader_custom);
-		        set_projection();
-		        t := cast(float32)seconds_since_init();
-			    set_uniform(*shader_custom_blend, "time", t);
-			    set_attribute(*shader_custom_blend, "tint", BLUE);
-		    }
-		}
-		case .CustomBlend; {
-			if context.simp.current_shader != *shader_custom_blend {
-		        immediate_set_shader(*shader_custom_blend);
-		        set_projection();
+		case .Color; 		set_shader_for_color(true);
+		case .ColorNoBlend; set_shader_for_color(false);
 
-			    t := cast(float32)seconds_since_init();
-			    set_uniform(*shader_custom_blend, "time", t);
-			    set_attribute(*shader_custom_blend, "tint", BLUE);
-		    }
-		}
-
-		case .Smoke; {
+		//@OPTIMIZE this smoke shader has HORRIBLE performance.
+		// went from 900fps -> 200 fps 
+		case .Smoke;
 			if context.simp.current_shader != *shader_smoke {
 		        immediate_set_shader(*shader_smoke);
 		        set_projection();
 
 			    t := cast(float32)seconds_since_init();
 			    set_uniform(*shader_smoke, "time", t);
-			    //set_uniform(*shader_smoke, "time", t);
 		    }
-		}
 	}
+}
+
+set_shader :: (texture : *Texture, shader := ShaderTexture.Default) {
+	assert(texture != null);
+	if shader== {
+		case .Default;
+			assert(texture != null);
+			set_shader_for_images(texture);
+
+		case .PalletTint;
+			immediate_flush();
+			if context.simp.current_shader != *shader_pallet_tint {
+				immediate_set_shader(*shader_pallet_tint);
+		        set_projection();
+		    }
+
+	        tx_loc_main := glGetUniformLocation(shader_pallet_tint.gl_handle, "u_diffuse_texture");
+
+		    if tx_loc_main < 0 {
+		        log_error("Unable to find 'diffuse_texture' in the current shader.");
+		        return;
+		    }
+		    glUniform1i(tx_loc_main, 0);
+
+		    glActiveTexture(GL_TEXTURE0 + 0);
+		    glBindTexture(GL_TEXTURE_2D, texture.gl_handle);  // Bind handle to slot 0.
+		   
+
+	        tx_loc_pallet := glGetUniformLocation(shader_pallet_tint.gl_handle, "u_pallet");
+
+		    if tx_loc_pallet < 0 {
+		        log_error("Unable to find 'u_pallet' in the current shader.");
+		        return;
+		    }
+		    glUniform1i(tx_loc_pallet, 1);
+
+		    pallet := get_texture("T_pallet_0");
+		    glActiveTexture(GL_TEXTURE0 + 1);
+		    glBindTexture(GL_TEXTURE_2D, pallet.texture.gl_handle);
+	}
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 }
 
 set_uniform :: (shader: *Shader, name: *u8, value : float) {
@@ -127,37 +145,97 @@ set_attribute :: (shader: *Shader, name: *u8, value : Vector4) {
     if loc >= 0  glUniform4f(loc, value.x, value.y, value.z, value.w);
 }
 
-
-/* @CLEAN
-SHADER_CUSTOM :: #string END
-OUT_IN vec4 iterated_color;
-
-uniform float time;
-
-#ifdef VERTEX_SHADER
-in vec4 vert_position;
-in vec4 vert_color;
-in vec4 tint;
-
-uniform mat4 projection;
-
-void main() {
-    gl_Position = projection * vec4(vert_position.xy, 0.0, 1.0);
-    iterated_color = vert_color * tint;
+draw_square :: (pos_window : Vector2, size : Vector2, color : Vector4, type := ShaderSolid.Color) {
+	set_shader(type);
+    h := Vector2.{size.x * .5, 0};
+    v := Vector2.{0, size.y * .5};
+	p0 := pos_window - h - v;
+    p1 := pos_window + h - v;
+    p2 := pos_window + h + v;
+    p3 := pos_window - h + v;
+    immediate_quad(p0, p1, p2, p3, color);
 }
-#endif // VERTEX_SHADER
 
-#ifdef FRAGMENT_SHADER
-
-out vec4 color;
-
-void main () {
-	//color = iterated_color;
-
-	float t = abs(sin(time));
-    color = iterated_color * t;
+draw_box :: (box : Box, color : Vector4, thickness := 2.) {
+	t := thickness;
+	draw_square(.{box.x + box.w/2, box.y}, .{t, box.h}, color);
+	draw_square(.{box.x - box.w/2, box.y}, .{t, box.h}, color);
+	draw_square(.{box.x, box.y+box.h/2}, .{box.w, t}, color);
+	draw_square(.{box.x, box.y-box.h/2}, .{box.w, t}, color);
 }
-#endif // FRAGMENT_SHADER
-END
 
-*/
+draw_rect :: (r : Rect, color : Vector4)
+{
+	draw_square(.{r.x+r.w/2.,r.y+r.h/2.}, .{r.w, r.h}, color);
+}
+
+// mostly copied from GetRect/color_picker.jai, draw_hsv_circle()
+draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : float = 0, color : Vector4,
+		percent_begin := 0.) 
+{
+	set_shader();
+	//set_shader_for_color(true); @CLEAN
+	NUM_SEGMENTS :: 16;
+	last_p0, last_p1: Vector2 = ---;
+
+	for i: 0..NUM_SEGMENTS - 1 {
+        t := i / cast(float)(NUM_SEGMENTS - 1);
+
+        // start from 12 oclock
+        radians := TAU * (t+.25);
+        dir := Vector2.{cos(radians), sin(radians)};
+
+        p0 := center_window + dir * radius_outer;
+        p1 := center_window + dir * radius_inner;
+
+        // omit percentage of the circle
+        if (i != 0 && t > percent_begin) {
+        	immediate_triangle(to_vec3(last_p0), to_vec3(last_p1), to_vec3(p1), color, color, color);
+            immediate_triangle(to_vec3(last_p0), to_vec3(p1), to_vec3(p0), color, color, color);
+        }
+
+        last_p0 = p0;
+        last_p1 = p1;
+    }
+}
+
+draw_collider :: (collider : *Collider, window_pos : Vector2, win_size : Vector2) {
+	c := BLUE;
+	if collider.type == {
+		case .Dynamic; c = MAGENTA;
+		case .Trigger; c = YELLOW;
+		case .Inactive; c= WHITE;
+	}
+	if !collider.enabled c = RED;
+
+	p := window_pos;
+	if collider.shape== {
+		case .Circle; {
+			r := win_size.x;
+			draw_circle(p, radius_outer=r, radius_inner=r-2, color=c);
+		}
+		case .Box; {
+			box := Box.{p.x, p.y, win_size.x, win_size.y};
+			draw_box(box, c);
+		}
+	}
+}
+
+draw_texture :: (texture : *Texture, window_pos : Vector2, scale := Vector2.{1,1}, outline := false, shader := ShaderTexture.Default, tint := WHITE) {
+	width := texture.width * scale.x;
+	height := texture.height * scale.y;
+
+	if outline {
+		draw_box(.{window_pos.x, window_pos.y, width, height}, RED);
+	}
+
+	h := Vector2.{width*.5, 0};
+    v := Vector2.{0, height*.5};
+	p0 := window_pos - h - v;
+    p1 := window_pos + h - v;
+    p2 := window_pos + h + v;
+    p3 := window_pos - h + v;
+	set_shader(texture, shader);
+    immediate_quad(p0, p1, p2, p3, tint);
+}
+

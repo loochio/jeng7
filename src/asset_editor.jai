@@ -31,16 +31,48 @@ sound_asset : *SoundAsset;
 
 sprite_scale : float = 4.0;
 file_scroll : float = 0.0;
-
-
+sprite_shader_index : s32 = 0;
+texture_brightness := 1.;
 
 asset_editor_new :: (type : AssetType) {
 	edit_type = type;
 
 	if type=={
 		case .Texture;  texture_asset = texture_alloc();
-		case .Sprite;  sprite_asset = sprite_alloc();
-		case .Sound;  sound_asset = sound_alloc();
+		case .Sprite;  	sprite_asset = sprite_alloc();
+		case .Sound;  	sound_asset = sound_alloc();
+	}
+}
+
+asset_editor_start_edit :: (type : AssetType, guid : string) {
+	edit_type = type;
+
+	if type=={
+		case .Texture;  
+			texture_asset = get_texture(guid);
+
+		case .Sprite;  	
+			sprite_asset = get_sprite(guid);
+			sprite_shader_index = cast(s32)sprite_asset.shader_type;
+
+		case .Sound;  	
+			sound_asset = get_sound(guid);
+	}
+}
+
+asset_editor_save :: () {
+	if edit_type=={
+		case .Texture;  
+			if is_valid(texture_asset.guid)
+				texture_save(texture_asset);
+
+		case .Sprite;  	
+			if is_valid(sprite_asset.guid)
+				sprite_save(sprite_asset);
+
+		case .Sound;
+			if is_valid(sound_asset.guid)
+				sound_save(sound_asset);
 	}
 }
 
@@ -82,6 +114,9 @@ asset_editor_tick :: (dt : float) {
 	if sprite_asset != null {
 		sprite_tick(sprite_asset, dt);
 	}
+
+	// save
+	if is_input_pressed(83 /*s*/) && input_mod_ctrl { asset_editor_save(); }
 };
 
 asset_editor_render :: (dt : float) {
@@ -96,9 +131,9 @@ asset_editor_render :: (dt : float) {
 
 render_subwindow_mode :: (state: *Subwindow_State, r: Rect, data: *void) {
 	layout := VerticalLayout.{ root=.{r.x, r.y, r.w, (cast(float)hud_font_pixel_height+4.)} };
-	if button(ui_next(*layout), "New Texture") { asset_editor_new(.Texture); }
-	if button(ui_next(*layout), "New Sprite") { asset_editor_new(.Sprite); }
-	if button(ui_next(*layout), "New Sound") { asset_editor_new(.Sound); }
+	if button(ui_next(*layout), "New Texture") 	{ asset_editor_new(.Texture); }
+	if button(ui_next(*layout), "New Sprite") 	{ asset_editor_new(.Sprite); }
+	if button(ui_next(*layout), "New Sound") 	{ asset_editor_new(.Sound); }
 }
 
 AssetFilterType :: enum {
@@ -138,9 +173,7 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	if show_textures {
 		for tx : assets.textures {
 			if button(ui_next(*layout), tx.guid, theme, identifier=layout.line) { 
-				texture_asset = tx;
-				edit_type = .Texture;
-				print("Editting Texture: GUID=%\n", tx.guid);
+				asset_editor_start_edit(.Texture, tx.guid);
 			}
 		}
 	}
@@ -148,9 +181,7 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	if show_sprites {
 		for spr : assets.sprites {
 			if button(ui_next(*layout), spr.guid, theme, identifier=layout.line) { 
-				sprite_asset = spr;
-				edit_type = .Sprite;
-				print("Editting Sprite: %\n", spr.guid);
+				asset_editor_start_edit(.Sprite, spr.guid);
 			}
 		}
 	}
@@ -158,9 +189,7 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	if show_sounds {
 		for sfx : assets.sounds {
 			if button(ui_next(*layout), sfx.guid, theme, identifier=layout.line) { 
-				sound_asset = sfx;
-				edit_type = .Sound;
-				print("Editting Sound: %\n", sfx.guid);
+				asset_editor_start_edit(.Sound, sfx.guid);
 			}
 		}
 	}
@@ -234,218 +263,150 @@ render_subwindow_view_texture :: (state: *Subwindow_State, r: Rect, data: *void)
 	ui_label(ui_col(*layout, 1), dim_txt);
 	ui_line(*layout);
 
+	slider(ui_next(*layout), *sprite_scale, 1.0, 30.0, 1.0, *hud_theme.slider_theme, "scale: ", "");
+	slider(ui_next(*layout), *texture_brightness, 1.0, 10.0, 0.1, *hud_theme.slider_theme, "brightness: ", "");
+
 	// draw selected texture on the right
 	rview := Rect.{r.x+rd.w, r.y, r.w-rd.w, r.h};
-	draw_texture(*texture_asset.texture, .{rview.x+rview.w/2., rview.y+rview.h/2.}, scale=.{1,1}, outline=true);
+
+	b := texture_brightness;
+	tint := Vector4.{b,b,b,b};
+	draw_texture(*texture_asset.texture, .{rview.x+rview.w/2., rview.y+rview.h/2.}, .{sprite_scale, sprite_scale}, outline=true, tint=tint);
 }
 
-//@TODO state of the art copy pasta here...
-// we need better UI code
 render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) {
 	if sprite_asset == null return;
 
-	line := 1;
-	p := 4.;
-	lh := cast(float)hud_font_pixel_height+p;
-	btn_theme := *hud_theme.button_theme;
-	btn_theme.alignment = .Left;
-	label_theme := *hud_theme.label_theme;
-	label_theme.alignment = .Left;
-	text_theme := hud_theme.text_input_theme;
-	text_theme.alignment = .Left;
-	text_theme.font = hud_font;
-
+	// ~~~~~ Left PANEL ~~~~~~
 	// details
+	txt_th := hud_theme.text_input_theme;
+	txt_th.alignment = .Left;
+	hud_theme.label_theme.alignment = .Left;
+
 	rd := Rect.{r.x, r.y, r.w*0.4, r.h};
+	lh := cast(float)hud_font_pixel_height+4;
+	margin := 8.;
 	draw_rect(rd, G_BLACK);
 
-	line=1;
+	layout := GridLayout.{ 
+		root=Rect.{rd.x+margin, rd.y, rd.w-margin*2, lh}, 
+		columns=float.[0.25, 0.75],
+	};
+	ui_grid_init(*layout);
 
+	ui_label(ui_col(*layout, 0), "Asset Type:");
+	ui_label(ui_col(*layout, 1), "Texture");
+	ui_line(*layout);
+
+	if button(ui_next(*layout), "Save") { sprite_save(sprite_asset); }
+
+	ui_label(ui_col(*layout, 0), "Edit GUID:");
 	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
-		label(r0, "Asset Type: Sprite", label_theme);
-		line += 1;
+		action, text := text_input(ui_col(*layout, 1), sprite_asset.guid, *txt_th);
+		if action & .ENTERED { sprite_set_guid(sprite_asset, text); }
 	}
+	ui_line(*layout);
 
-	{ // save
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		if button(r0, "Save", btn_theme) { 
-			sprite_save(sprite_asset);
+	ui_label(ui_col(*layout, 0), "GUID:");
+	ui_label(ui_col(*layout, 1), sprite_asset.guid);
+	ui_line(*layout);
+
+	ui_label(ui_col(*layout, 0), "Path:");
+	ui_label(ui_col(*layout, 1), sprite_asset.path);
+	ui_line(*layout);
+
+	ui_label(ui_col(*layout, 0), "Texture GUID:");
+	{
+		r := ui_col(*layout, 1);
+		//rin := Rect.{r.x,r.y,r.w*0.75,r.h}; @CLEAN
+		action, text := text_input(.{r.x,r.y,r.w*0.85,r.h}, sprite_asset.texture_guid, *txt_th);
+		if action & .ENTERED { sprite_set_texture_guid(sprite_asset, text); }
+
+		if button(.{r.x+r.w*.85,r.y,r.w*0.15,r.h}, "View") { 
+			asset_editor_start_edit(.Texture, sprite_asset.texture_guid); 
 		}
-		line += 1;
 	}
+	ui_line(*layout);
 
+	ui_label(ui_col(*layout, 0), "Frame Count:");
 	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "Name", label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		action, text, state := text_input(r1, sprite_asset.guid, *text_theme);
-		if action & .ENTERED {
-			sprite_set_guid(sprite_asset, text);
-		}
-		line += 1;
-	}
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		text := tprint("Asset Name:");
-		label(r0, text, label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		label(r1, sprite_asset.guid, label_theme);
-
-		line += 1;
-	}
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		text := tprint("Asset Path:");
-		label(r0, text, label_theme);
-
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		label(r1, sprite_asset.path, label_theme);
-
-		line += 1;
-	}
-
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*0.25, lh};
-		label(r0, "Texture GUID:", label_theme);
-		r1 := r0;
-		r1.x = rd.x+r0.w;
-		r1.w = rd.w*0.75;
-		action, text, state := text_input(r1, sprite_asset.texture_guid, *text_theme);
-		if action & .ENTERED {
-			string_reset(*sprite_asset.texture_guid);
-			sprite_asset.texture_guid = sprint(text);
-			sprite_resolve(sprite_asset);
-		}
-		line += 1;
-	}
-
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*.25, lh};
-		label(r0, "Frames:", label_theme);
-
-		r1 := Rect.{rd.x+r0.w, r0.y, rd.w*0.75, r0.h};
 		text := tprint("%", sprite_asset.frame_count);
-		action, input, state := text_input(r1, text, *text_theme);
+		action, input, state := text_input(ui_col(*layout, 1), text, *txt_th);
 		if action & .ENTERED {
 			value, success := string_to_int(input);
-			if success {
-				sprite_asset.frame_count = value;
-				sprite_resolve(sprite_asset);
-			}
+			if success { sprite_set_frame_count(sprite_asset, value); }
 		}
-
-		line += 1;
 	}
+	ui_line(*layout);
+
+	ui_label(ui_col(*layout, 0), "Frame Width");
 	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*.25, lh};
-		label(r0, "Frame Size (w,h):", label_theme);
-
-		//x
-		r1 := Rect.{rd.x+r0.w, r0.y, rd.w*0.375, r0.h};
-		{
-			text := tprint("%", sprite_asset.frame_size.x);
-			action, input, state := text_input(r1, text, *text_theme);
-			if action & .ENTERED {
-				value, success := string_to_float(input);
-				if success {
-					sprite_asset.frame_size.x = value;
-					sprite_resolve(sprite_asset);
-				}
-			}
+		text := tprint("%", sprite_asset.frame_size.x);
+		action, input, state := text_input(ui_col(*layout, 1), text, *txt_th);
+		if action & .ENTERED {
+			value, success := string_to_int(input);
+			if success { sprite_set_frame_width(sprite_asset, xx value); }
 		}
-		//y
-		r2 := Rect.{r1.x+r1.w, r1.y, r1.w, r1.h};
-		{
-			text := tprint("%", sprite_asset.frame_size.y);
-			action, input, state := text_input(r2, text, *text_theme);
-			if action & .ENTERED {
-				value, success := string_to_float(input);
-				if success {
-					sprite_asset.frame_size.y = value;
-					sprite_resolve(sprite_asset);
-				}
-			}
-		}
-
-		line += 1;
 	}
-	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w*.25, lh};
-		label(r0, "Play Length", label_theme);
+	ui_line(*layout);
 
-		r1 := Rect.{rd.x+r0.w, r0.y, rd.w*0.75, r0.h};
+	ui_label(ui_col(*layout, 0), "Frame Height");
+	{
+		text := tprint("%", sprite_asset.frame_size.x);
+		action, input, state := text_input(ui_col(*layout, 1), text, *txt_th);
+		if action & .ENTERED {
+			value, success := string_to_int(input);
+			if success { sprite_set_frame_height(sprite_asset, xx value); }
+		}
+	}
+	ui_line(*layout);
+
+	ui_label(ui_col(*layout, 0), "Play Length");
+	{
 		text := tprint("%", sprite_asset.play_length);
-		action, input, state := text_input(r1, text, *text_theme);
+		action, input, state := text_input(ui_col(*layout, 1), text, *txt_th);
 		if action & .ENTERED {
 			value, success := string_to_float(input);
-			if success {
-				sprite_asset.play_length = value;
-				sprite_resolve(sprite_asset);
-			}
+			if success { sprite_set_play_length(sprite_asset, value); }
 		}
-
-		line += 1;
 	}
+	ui_line(*layout);
+
+	ui_label(ui_col(*layout, 0), "Offset:");
 	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
-		text := tprint("Offset: %", sprite_asset.offset);
-		label(r0, text, label_theme);
-		line += 1;
+		text := tprint("%", sprite_asset.offset);
+		ui_label(ui_col(*layout, 1), text);
 	}
+	ui_line(*layout);
+
+	ui_label(ui_col(*layout, 0), "Tint:");
 	{
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
-		text := tprint("Tint: %", sprite_asset.tint);
-		label(r0, text, label_theme);
-		line += 1;
+		text := tprint("%", sprite_asset.tint);
+		ui_label(ui_col(*layout, 1), text);
 	}
+	ui_line(*layout);
 
-	{
-		//@TODO don't know why this checkbox isn't rendering the check
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
- 		pressed := base_checkbox(r0, "Flip X", sprite_asset.default_flip_x, *hud_theme.checkbox_theme, line);
-        if pressed {
-        	sprite_asset.default_flip_x = !sprite_asset.default_flip_x;
-        	print("flip x %\n", sprite_asset.default_flip_x);
-        }
+	ui_label(ui_col(*layout, 0), "Shader:");
+	shaders := enum_names(ShaderTexture);
+	dropdown(ui_col(*layout, 1), shaders, *sprite_shader_index, *hud_theme.dropdown_theme);
+	sprite_asset.shader_type = cast(ShaderTexture)sprite_shader_index;
+	ui_line(*layout);
 
-		line += 1;
-	}
+	ui_label(ui_col(*layout, 0), "Flix X: %", sprite_asset.default_flip_x);
+	if button(ui_col(*layout, 1), "Toggle") { sprite_asset.default_flip_x = !sprite_asset.default_flip_x; }
+	ui_line(*layout);
 
-	{
-		//@TODO don't know why this checkbox isn't rendering the check
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
- 		pressed := base_checkbox(r0, "Flip y", sprite_asset.default_flip_y, *hud_theme.checkbox_theme, line);
-        if pressed {
-        	sprite_asset.default_flip_y = !sprite_asset.default_flip_y;
-        	print("flip x %\n", sprite_asset.default_flip_y);
-        }
+	ui_label(ui_col(*layout, 0), "Flix Y: %", sprite_asset.default_flip_y);
+	if button(ui_col(*layout, 1), "Toggle") { sprite_asset.default_flip_y = !sprite_asset.default_flip_y; }
+	ui_line(*layout);
 
-		line += 1;
-	}
+	ui_label(ui_col(*layout, 0), "Loop: %", sprite_asset.loop);
+	if button(ui_col(*layout, 1), "Toggle") { sprite_asset.loop = !sprite_asset.loop; }
+	ui_line(*layout);
 
-	{
-		//@TODO don't know why this checkbox isn't rendering the check
-		r0 := Rect.{rd.x, rd.y+rd.h-(lh*line), rd.w, lh};
- 		pressed := base_checkbox(r0, "Loop", sprite_asset.loop, *hud_theme.checkbox_theme, line);
-        if pressed {
-        	sprite_asset.loop = !sprite_asset.loop;
-        	print("loop %\n", sprite_asset.loop);
-        }
-		line += 1;
-	}
-
+	// ~~~~~ RIGHT PANEL ~~~~~~
 	// draw texture and sprite
 	rview := Rect.{r.x+rd.w, r.y, r.w-rd.w, r.h};
-
 	rspr := Rect.{rview.x, rview.y+rview.h*.5, rview.w, rview.h*.5};
 	draw_rect(rspr, GREY*0.25);
 
@@ -480,7 +441,9 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 	{
 		layout := VerticalLayout.{ root=.{rstats.x, rstats.y, rstats.w, lh} };
 
+		ui_label(*layout, "Version: %", sprite_asset.VERSION);
 		ui_label(*layout, "Frame Current: %", sprite_asset.frame_current);
+		ui_label(*layout, "Play Length: %", sprite_asset.play_length);
 		ui_label(*layout, "Play Pos: %", sprite_asset.play_position);
 		ui_label(*layout, "Play Rate: %", sprite_asset.play_rate);
 		ui_label(*layout, "Playing: %", sprite_asset.playing);
@@ -488,6 +451,7 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 		ui_label(*layout, "flip_x: %", sprite_asset.flip_x);
 		ui_label(*layout, "flip_y: %", sprite_asset.flip_y);
 		ui_label(*layout, "tint_mult: %", sprite_asset.tint_mult);
+		ui_label(*layout, "shader: %", sprite_asset.shader_type);
 	}
 }
 
