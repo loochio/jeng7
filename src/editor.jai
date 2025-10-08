@@ -166,16 +166,27 @@ editor_render :: (dt : float) {
 	line := scalar_to_window(4) * editor_camera.zoom;
 
 	//grid
-	//@TODO draw these as lines
-	g :: 20;
-	s := grid_cell_size;
-	for i: -g*2..g*2 {
-		for j: -g..g {
-			b := Box.{origin.x+ s*i+s/2, origin.y + s*j+s/2, s, s};
-			draw_box(b, G_BLACK);
+	{
+		// vertical lines
+		nv := 100;
+		for -nv..nv {
+			pos := Vector2.{grid_cell_size*it+origin.x, window_center.y};
+			th := ifx it%5 == 0 then 4. else 1.;
+			size := Vector2.{th, xx window_height};
+			c := ifx it==0 then GREEN else GREY;
+			draw_square(pos, size, c);
+		}
+		// horizontal lines
+		nh := 100;
+		for -nh..nh {
+			pos := Vector2.{window_center.x, grid_cell_size*it+origin.y};
+			th := ifx it%5 == 0 then 4. else 1.;
+			size := Vector2.{xx window_width, th};
+			c := ifx it==0 then RED else GREY;
+			draw_square(pos, size, c);
 		}
 	}
-
+	
 	// draw spawners
 	for editor_level.spawners {
 		sprite := get_sprite(it.type);
@@ -190,9 +201,6 @@ editor_render :: (dt : float) {
 		draw_box(.{cp.x, cp.y, grid_cell_size, grid_cell_size}, color, line);
 	}
 	
-	// debug world origin
-	draw_circle(origin, 5, color=GREEN);
-
 	if tool.proc_render tool.proc_render(tool, dt);
 
 	//~~~~ UI v2 ~~~~~
