@@ -35,7 +35,8 @@ editor_init :: () {
 
 	register_tool(*tool_selection);
 	register_tool(*tool_actor);
-	tool = tool_selection; //default
+	register_tool(*tool_tilemap);
+	tool = *tool_selection; //default
 
 	register_cmd("save", (args: .. Any) { editor_save(); });
 	register_cmd("load", (args: .. Any) { 
@@ -125,16 +126,12 @@ editor_tick :: (dt : float) {
 	if !ui_hit_this_frame {
 		for t : tools {
 			if is_input_pressed(t.key){
-				print("Tool [%] activated\n", t.name);
-				tool = t;
-				tool_index = cast(s32)it_index;
-
-				if tool.proc_init tool.proc_init(*tool);
+				set_tool(xx it_index);
 			}
 		}
 	}
 
-	if tool.proc_tick tool.proc_tick(*tool, dt);
+	if tool.proc_tick tool.proc_tick(tool, dt);
 
 	// camera panning, @TODO smooth this translation out
 	if is_input_released(.MOUSE_BUTTON_RIGHT) {
@@ -174,7 +171,8 @@ editor_render :: (dt : float) {
 	s := grid_cell_size;
 	for i: -g*2..g*2 {
 		for j: -g..g {
-			draw_box(.{origin.x+ s*i+s/2, origin.y + s*j+s/2, s, s}, G_BLACK);
+			b := Box.{origin.x+ s*i+s/2, origin.y + s*j+s/2, s, s};
+			draw_box(b, G_BLACK);
 		}
 	}
 
@@ -195,7 +193,7 @@ editor_render :: (dt : float) {
 	// debug world origin
 	draw_circle(origin, 5, color=GREEN);
 
-	if tool.proc_render tool.proc_render(*tool, dt);
+	if tool.proc_render tool.proc_render(tool, dt);
 
 	//~~~~ UI v2 ~~~~~
 	win_theme := hud_theme.subwindow_theme;
@@ -250,51 +248,9 @@ draw_subwindow_level :: (state: *Subwindow_State, r: Rect, data: *void) {
 	}
 }
 
-
 draw_subwindow_details :: (state: *Subwindow_State, r: Rect, data: *void) {
-	root := r;
-	th := hud_theme.label_theme;
-	th.alignment = .Left;
-	line := 1;
-	p := 4.;
-	lh := cast(float)hud_font_pixel_height+p;
-	count := selected_spawner_idxs.count;
-
-	{ // selection count
-		r0 := Rect.{root.x, root.y+root.h-lh, root.w, lh};
-		text := tprint("Selecting % spawners", count);
-    	label(r0, text, *th);
-    	root.h -= r0.h;
-	}
-
-	// display the first selection
-	if count > 0 {
-		spawner := get_selection();
-
-		r0 := Rect.{root.x, root.y+root.h-lh, root.w, lh};
-		text := tprint("ActorType: %", spawner.type);
-    	label(r0, text, *th);
-    	root.h -= r0.h;
-
-    	r0 = Rect.{root.x, root.y+root.h-lh, root.w, lh};
-		text = tprint("Position: %", spawner.position);
-    	label(r0, text, *th);
-    	root.h -= r0.h;
-
-    	r0 = Rect.{root.x, root.y+root.h-lh, root.w*.25, lh};
-		text = tprint("Data:");
-    	label(r0, text, *th);
-
-    	r0 = Rect.{root.x+root.w*.25, root.y+root.h-lh, root.w*.75, lh};
-    	preview := tprint(spawner.data);
-    	action, data_text, state := text_input(r0, preview, *hud_theme.text_input_theme);
-    	if action & .ENTERED  {
-    		reset(state);
-    		string_reset(*spawner.data);
-			spawner.data = sprint(data_text);
-			dirty = true;
-    	}
-    	root.h -= r0.h;
+	if tool.proc_render_details {
+		tool.proc_render_details(tool, state, r, data);
 	}
 }
 
@@ -386,10 +342,10 @@ editor_spawner_add :: (spawner : ActorSpawner) {
 	dirty = true;
 }
 
-editor_spawner_delete :: (space : Box) {
+editor_spawner_delete :: (area : Box) {
 	for < editor_level.spawners {
 		spawner := it;
-		if is_in_box(spawner.position, space) {
+		if is_in_box(spawner.position, area) {
 			print("DELETE: %\n", spawner);
 			array_unordered_remove_by_index(*editor_level.spawners, it_index);
 			spawner_reset(*spawner);
@@ -398,9 +354,9 @@ editor_spawner_delete :: (space : Box) {
 	dirty = true;
 }
 
-is_occupied :: (space : Box) -> bool{
+is_occupied :: (area : Box) -> bool{
 	for editor_level.spawners {
-		if is_in_box(it.position, space) {
+		if is_in_box(it.position, area) {
 			return true;
 		}
 	}
@@ -432,12 +388,16 @@ draw_subwindow_tools :: (state: *Subwindow_State, r: Rect, data: *void) {
 	r0 := Rect.{r.x, r.y+r.h-lh, r.w, lh};
     {
  	   changed, state := dropdown(r0, tool_options, *tool_index, *hud_theme.dropdown_theme);
- 	   tool = tools[tool_index];
+ 	   if changed {
+ 	   		//@FIXME changed doesn't register
+ 			set_tool(tool_index);
+ 	   }
+ 	   //tool = tools[tool_index]; @CLEAN
     }
 
     // tool sub-section
     r1 := Rect.{r.x,r.y, r.w, r.h-r0.h};
-	if tool.proc_render_in_subwindow tool.proc_render_in_subwindow(*tool, state, r1, data);
+	if tool.proc_render_subwindow tool.proc_render_subwindow(tool, state, r1, data);
 }
 
 EditorTool :: struct {
@@ -447,7 +407,8 @@ EditorTool :: struct {
 	proc_init : EditorToolProc;
 	proc_tick : EditorToolProc_Tick;
 	proc_render : EditorToolProc_Render;
-	proc_render_in_subwindow : EditorToolProc_RenderSubWindow;
+	proc_render_subwindow : EditorToolProc_RenderSubWindow;
+	proc_render_details : EditorToolProc_RenderSubWindow;
 }
 
 EditorToolProc :: #type (t : *EditorTool);
@@ -455,7 +416,7 @@ EditorToolProc_Tick :: #type (t : *EditorTool, dt : float);
 EditorToolProc_Render :: #type (t : *EditorTool, dt : float);
 EditorToolProc_RenderSubWindow :: #type (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void);
 
-tool : EditorTool;
+tool : *EditorTool;
 tools : [..] *EditorTool;
 tool_options : [..] string;
 tool_index : s32;
@@ -468,6 +429,14 @@ register_tool :: (tool : *EditorTool) {
 	array_add(*tool_options, tool_text);
 }
 
+set_tool :: (index : s32) {
+	tool = tools[index];
+	tool_index = index;
+	print("Tool set to [%]\n", tool.name);
+
+	if tool.proc_init tool.proc_init(tool);
+}
+
 // ~~~~ Actor Spawner Tool ~~~~
 
 EditorTool_Actor :: struct {
@@ -476,17 +445,18 @@ EditorTool_Actor :: struct {
 	actor_type := ActorType.Block;
 }
 
-tool_actor :: EditorTool_Actor.{
+tool_actor := EditorTool_Actor.{
 	name = "Actors",
 	key = 65, /*a*/
 
-	proc_init = tool_init_actor,
-	proc_tick = tool_tick_actor,
-	proc_render = tool_render_actor,
-	proc_render_in_subwindow = tool_render_in_subwindow_actor,
+	proc_init = tool_actor_init,
+	proc_tick = tool_actor_tick,
+	proc_render = tool_actor_render,
+	proc_render_subwindow = tool_actor_render_subwindow,
+	proc_render_details = tool_actor_render_details,
 };
 
-tool_init_actor :: (tool : *EditorTool) {
+tool_actor_init :: (tool : *EditorTool) {
 	assert(tool != null);
 	atool := cast(*EditorTool_Actor) tool;
 	atool.actor_type = .Block;
@@ -496,7 +466,7 @@ tool_init_actor :: (tool : *EditorTool) {
 	print("\ttool actor: type=%\n", atool.actor_type);
 }
 
-tool_tick_actor :: (t : *EditorTool, dt : float) {
+tool_actor_tick :: (t : *EditorTool, dt : float) {
 	if ui_hit_this_frame return;
 
 	atool := cast(*EditorTool_Actor) t;
@@ -524,9 +494,9 @@ tool_tick_actor :: (t : *EditorTool, dt : float) {
 	//@TODO [SHIFT] get selection, fill on release
 }
 
-tool_render_actor :: (t : *EditorTool, dt : float) {}
+tool_actor_render :: (t : *EditorTool, dt : float) {}
 
-tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
+tool_actor_render_subwindow :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
 	atool := cast(*EditorTool_Actor) t;
 
 	// actor type label
@@ -566,15 +536,64 @@ tool_render_in_subwindow_actor :: (t : *EditorTool, state: *Subwindow_State, r: 
     }
 }
 
+tool_actor_render_details :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void)  {
+	root := r;
+	th := hud_theme.label_theme;
+	th.alignment = .Left;
+	line := 1;
+	p := 4.;
+	lh := cast(float)hud_font_pixel_height+p;
+	count := selected_spawner_idxs.count;
+
+	{ // selection count
+		r0 := Rect.{root.x, root.y+root.h-lh, root.w, lh};
+		text := tprint("Selecting % spawners", count);
+    	label(r0, text, *th);
+    	root.h -= r0.h;
+	}
+
+	// display the first selection
+	if count > 0 {
+		spawner := get_selection();
+
+		r0 := Rect.{root.x, root.y+root.h-lh, root.w, lh};
+		text := tprint("ActorType: %", spawner.type);
+    	label(r0, text, *th);
+    	root.h -= r0.h;
+
+    	r0 = Rect.{root.x, root.y+root.h-lh, root.w, lh};
+		text = tprint("Position: %", spawner.position);
+    	label(r0, text, *th);
+    	root.h -= r0.h;
+
+    	r0 = Rect.{root.x, root.y+root.h-lh, root.w*.25, lh};
+		text = tprint("Data:");
+    	label(r0, text, *th);
+
+    	r0 = Rect.{root.x+root.w*.25, root.y+root.h-lh, root.w*.75, lh};
+    	preview := tprint(spawner.data);
+    	action, data_text, state := text_input(r0, preview, *hud_theme.text_input_theme);
+    	if action & .ENTERED  {
+    		reset(state);
+    		string_reset(*spawner.data);
+			spawner.data = sprint(data_text);
+			dirty = true;
+    	}
+    	root.h -= r0.h;
+	}
+}
+
+
 
 // ~~~~ Selection Tool ~~~~
 
-tool_selection :: EditorTool.{
+tool_selection := EditorTool.{
 	name = "Selection",
 	key = 86 /*v*/,
-	proc_tick = tool_tick_selection,
-	proc_render = tool_render_selection,
-	proc_render_in_subwindow = tool_render_in_subwindow_selection,
+	proc_tick = tool_selection_tick,
+	proc_render = tool_selection_render,
+	proc_render_subwindow = tool_selection_render_subwindow,
+	proc_render_details = tool_actor_render_details,
 };
 
 selected_spawner_idxs : [..] s64;
@@ -599,7 +618,7 @@ clear_selection :: () {
 	selection_box = Box.{};
 }
 
-tool_tick_selection :: (t : *EditorTool, dt : float) {
+tool_selection_tick :: (t : *EditorTool, dt : float) {
 	if ui_hit_this_frame return;
 
 	// begin selection
@@ -653,7 +672,7 @@ tool_tick_selection :: (t : *EditorTool, dt : float) {
 	}
 }
 
-tool_render_selection :: (t : *EditorTool, dt : float) {
+tool_selection_render :: (t : *EditorTool, dt : float) {
 	 // selection box 
 	sp := vec_editor_to_window(Vector2.{selection_box.x, selection_box.y});
 	w := scalar_to_window(selection_box.w) * editor_camera.zoom;
@@ -671,7 +690,7 @@ tool_render_selection :: (t : *EditorTool, dt : float) {
 	}
 }
 
-tool_render_in_subwindow_selection :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
+tool_selection_render_subwindow :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	theme : = hud_theme.label_theme;
@@ -695,4 +714,91 @@ tool_render_in_subwindow_selection :: (t : *EditorTool, state: *Subwindow_State,
 	    	label(r0, text, *theme);
 		}
 	}
+}
+
+
+// ~~~~ Tilemap Tool ~~~~
+
+EditorTool_Tilemap :: struct {
+	#as using tool : EditorTool;
+	selected_layer := 0;
+	selected_tiletype := 0;
+}
+
+tool_tilemap := EditorTool_Tilemap.{
+	name = "Tilemap",
+	key = 84, /*t*/
+
+	proc_init = tool_tilemap_init,
+	proc_tick = tool_tilemap_tick,
+	proc_render = tool_tilemap_render,
+	proc_render_subwindow = tool_tilemap_render_subwindow,
+	//proc_render_in_details = tool_render_in_details_tilemap, @CLEAN
+};
+
+tool_tilemap_init :: (t : *EditorTool) {
+	assert(t != null);
+	tmtool := cast(*EditorTool_Tilemap)t;
+	tmtool.selected_layer = 0;
+	tmtool.selected_tiletype = 1;
+}
+
+tool_tilemap_tick :: (t : *EditorTool, dt : float) {
+	if ui_hit_this_frame return;
+
+	tmtool := cast(*EditorTool_Tilemap) t;
+	assert(tmtool != null);
+	tg := *editor_level.tilegrid;
+
+	if is_input_down(.MOUSE_BUTTON_LEFT) {
+		// delete
+		if input_mod_ctrl {
+			log("delete: layer=%", tmtool.selected_layer);
+
+			pos := Vector2.{cursor_box.x, cursor_box.y};
+			if is_pos_in_tilegrid(tg, pos) {
+				x,y := get_tilegrid_coords_from_pos(tg, pos);
+				erase_tilegrid_cell(tg, tmtool.selected_layer, x, y);
+			}
+		}
+		// add
+		else {
+			log("paint: layer=% tile=%", tmtool.selected_layer, tmtool.selected_tiletype);
+
+			pos := Vector2.{cursor_box.x, cursor_box.y};
+			if is_pos_in_tilegrid(tg, pos) {
+				x,y := get_tilegrid_coords_from_pos(tg, pos);
+				set_tilegrid_cell(tg, tmtool.selected_layer, x, y, tmtool.selected_tiletype);
+			}
+		}
+	}
+}
+
+tool_tilemap_render :: (t : *EditorTool, dt : float) {}
+
+tool_tilemap_render_subwindow :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
+	tm_tool := cast(*EditorTool_Tilemap)t;
+	tg := editor_level.tilegrid;
+
+	lh := cast(float)hud_font_pixel_height+4.;
+	layout := VerticalLayout.{ root=.{r.x, r.y, r.w, lh} };
+
+	ui_label(*layout, "Position: %", tg.position);
+	slider(ui_next(*layout), *tm_tool.selected_layer, 0, tg.layers.count-1, 1, *hud_theme.slider_theme, "Edit Layer: ", "");
+
+	for tilemaps {
+		ui_label(*layout, "Tilemap: %/%", it_index, it.texture_guid);
+	}
+}
+
+tool_tilemap_select_layer_up :: (tool : *EditorTool_Tilemap) {
+	tool.selected_layer += 1;
+	if tool.selected_layer >= editor_level.tilegrid.layers.count
+		tool.selected_layer = 0;
+}
+
+tool_tilemap_select_layer_down :: (tool : *EditorTool_Tilemap) {
+	tool.selected_layer -= 1;
+	if tool.selected_layer < 0
+		tool.selected_layer = editor_level.tilegrid.layers.count-1;
 }

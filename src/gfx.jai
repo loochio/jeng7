@@ -239,3 +239,42 @@ draw_texture :: (texture : *Texture, window_pos : Vector2, scale := Vector2.{1,1
     immediate_quad(p0, p1, p2, p3, tint);
 }
 
+draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}, use_window_scale := true) {
+	if !sprite.initialized return;
+	if !sprite.visible return;
+
+	set_shader(sprite.texture, sprite.shader_type);
+    
+    texW := sprite.texture.width;
+    texH := sprite.texture.height;
+
+    frame := sprite.frames[sprite.frame_current];
+    subX : float = frame.coords.x;
+    subY : float = frame.coords.y;
+    subW : float = frame.coords.w;
+    subH : float = frame.coords.h;
+
+    uv0x := Vector2.{subX / texW, subY / texH};
+    uv1x := Vector2.{(subX+subW) / texW, subY / texH };
+    uv2x := Vector2.{(subX+subW) / texW, (subY+subH) / texH};
+    uv3x := Vector2.{subX / texW, (subY+subH) / texH};
+
+    ws := ifx use_window_scale then get_window_aspect_scale() else 1.;
+    h := Vector2.{frame.coords.w * .5 * ws * scale.x * forced_window_scale_x, 0};
+    v := Vector2.{0, frame.coords.h * .5 * ws * scale.y * forced_window_scale_y};
+
+    if sprite.default_flip_x	h *= -1;
+    if sprite.flip_x			h *= -1;
+    if sprite.default_flip_y	v *= -1;
+    if sprite.flip_y			v *= -1;
+
+	p0 := window_pos - h - v + sprite.offset;
+    p1 := window_pos + h - v + sprite.offset;
+    p2 := window_pos + h + v + sprite.offset;
+    p3 := window_pos - h + v + sprite.offset;
+
+    color := sprite.tint * sprite.tint_mult;
+    immediate_quad(p0, p1, p2, p3, color, uv0=uv0x, uv1=uv1x, uv2=uv2x, uv3=uv3x);
+}
+
+

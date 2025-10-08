@@ -497,10 +497,15 @@ assets_init :: () {
 	for assets.sprites {
 		sprite_resolve(it);
 	}
+
+	tilemaps_init();
 }
 
 assets_reset :: () {
 	log("Resetting Asset Management\n");
+
+	tilemaps_deinit();
+
 	pool_reset(*assets.textures);
 	table_reset(*assets.texture_table);
 
@@ -886,45 +891,6 @@ sprite_set_play_length :: (sprite : *Sprite, length : float) {
 	sprite_resolve(sprite);
 }
 
-draw_sprite :: (sprite : *Sprite, window_pos : Vector2, scale := Vector2.{1,1}, use_window_scale := true) {
-	if !sprite.initialized return;
-	if !sprite.visible return;
-
-	set_shader(sprite.texture, sprite.shader_type);
-    
-    frame := sprite.frames[sprite.frame_current];
-
-    texW := sprite.texture.width;
-    texH := sprite.texture.height;
-
-    subX : float = frame.coords.x;
-    subY : float = frame.coords.y;
-    subW : float = frame.coords.w;
-    subH : float = frame.coords.h;
-
-    uv0x := Vector2.{subX / texW, subY / texH};
-    uv1x := Vector2.{(subX+subW) / texW, subY / texH };
-    uv2x := Vector2.{(subX+subW) / texW, (subY+subH) / texH};
-    uv3x := Vector2.{subX / texW, (subY+subH) / texH};
-
-    ws := ifx use_window_scale then get_window_aspect_scale() else 1.;
-    h := Vector2.{frame.coords.w * .5 * ws * scale.x * forced_window_scale_x, 0};
-    v := Vector2.{0, frame.coords.h * .5 * ws * scale.y * forced_window_scale_y};
-
-    if sprite.default_flip_x	h *= -1;
-    if sprite.flip_x			h *= -1;
-    if sprite.default_flip_y	v *= -1;
-    if sprite.flip_y			v *= -1;
-
-	p0 := window_pos - h - v + sprite.offset;
-    p1 := window_pos + h - v + sprite.offset;
-    p2 := window_pos + h + v + sprite.offset;
-    p3 := window_pos - h + v + sprite.offset;
-
-    color := sprite.tint * sprite.tint_mult;
-    immediate_quad(p0, p1, p2, p3, color, uv0=uv0x, uv1=uv1x, uv2=uv2x, uv3=uv3x);
-}
-
 sprite_step :: (sprite : *Sprite) {
 	if !sprite.initialized return;
 
@@ -1267,7 +1233,7 @@ ui_next :: (layout : *VerticalLayout) -> Rect {
 
 ui_label :: (layout : *VerticalLayout, fmt : string, args : .. Any) {
 	r := ui_next(layout);
-	txt := tprint(fmt, args);
+	txt := tprint(fmt, ..args);
 	label(r, txt, *hud_theme.label_theme);
 }
 
@@ -1362,6 +1328,109 @@ debug_rendering :: () {
 		}
 	}
 }
+
+// ~~~~ Grids ~~~~
+
+Grid :: struct (T : Type, ROWS : s64, COLS : s64) {
+	cells : [ROWS][COLS] T;
+}
+
+//@TODO for_expansion on Grid
+
+// TileGrid layout of indices, represents the object that exists in the world
+// id is mapped to a unique Tilemap
+// index is looked up in a TileMap, Tilemap translates index to tex slice
+TileGrid :: struct (max_layers : s64, rows : s64, cols : s64, size := TILEGRID_CELL_SIZE) {
+	layers : [max_layers] Grid(s64, rows, cols);
+	position : Vector2; // world position origin
+	cell_size := size;
+}
+
+TileMap :: struct {
+	texture_guid : string;
+	id := 0;
+}
+
+MAX_TILEGRID_LAYERS :: 4;
+MAX_TILEGRID_CELLS :: 128;
+TILEGRID_CELL_SIZE :: 32.; // world units
+MAX_TILEMAPS :: 32;
+tilemap_id := 0;
+tilemaps : Table(s64, TileMap);
+
+tilemaps_init :: () {
+	tilemap_id = 0;
+	//init(*tilemaps, MAX_TILEMAPS);
+//
+	//tm := tilemaps_add("T_tm_grass");
+	//log("Added tilemap: id=% TexGUID=%", tm.id, tm.texture_guid);
+}
+
+tilemaps_deinit :: () {
+	//for tilemaps {
+	//	string_reset(*it.texture_guid);
+	//}
+	//deinit(*tilemaps);
+}
+
+tilemaps_add :: (texture_guid : string) -> *TileMap {
+	assert(is_valid(texture_guid));
+	tilemap_id += 1;
+	tm := TileMap.{ 
+		sprint(texture_guid), 
+		tilemap_id 
+	};
+	result := table_add(*tilemaps, tilemap_id, tm);
+	assert(result != null, "Texture GUID=% id=%", texture_guid, tilemap_id);
+	return result;
+}
+
+get_tilemap :: (id : s64) -> *TileMap{
+	result := table_find_pointer(*tilemaps, id);
+	assert(result != null, "Tilemap ID not found: %", id);
+	return result;
+}
+
+is_valid_tilemap_id :: (id : s64) -> bool {
+	return table_contains(*tilemaps, id);
+}
+
+get_tilegrid_coords_from_pos :: (tg : *TileGrid, pos : Vector2) -> (x : s64, y : s64) {
+	assert(is_pos_in_tilegrid(tg, pos));
+	p := pos - tg.position;
+	x := cast(s64)(p.x / tg.size);
+	y := cast(s64)(p.y / tg.size);
+	return x, y;
+}
+
+is_pos_in_tilegrid :: (tg : *TileGrid, pos : Vector2) -> bool {
+	return pos.x > tg.position.x 
+		&& pos.y > tg.position.y 
+		&& pos.x < tg.position.x+(tg.cell_size*tg.cols)
+		&& pos.y < tg.position.y+(tg.cell_size*tg.rows);
+}
+
+set_tilegrid_cell :: (tg : *TileGrid, layer : s64, row : s64, col : s64, tm_id : s64) {
+	assert(tm_id >= 0);
+	assert(is_valid_tilemap_id(tm_id));
+	assert(layer >= 0 && layer < tg.layers.count);
+	assert(abs(row) < tg.layers[layer].cells.count);
+	tg.layers[layer].cells[row][col] = tm_id;
+	log("set tg cell: [%,%]=%", row, col, tm_id);
+}
+
+erase_tilegrid_cell :: (tg : *TileGrid, layer : s64, row : s64, col : s64) {
+	set_tilegrid_cell(tg, layer, row, col, 0);
+	log("erased tg cell: [%,%]", row, col);
+}
+
+// index represents [0-15], a slice of the texture from texture_guid
+draw_tilemap :: (tm : *TileMap, index : s64, window_pos : Vector2) {
+
+}
+
+
+// ~~~~~ Termianl ~~~~~
 
 terminal_prompt : string;
 terminal_id : s64;

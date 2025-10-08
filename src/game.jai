@@ -523,6 +523,7 @@ world_init :: (level_name : string, depth := 0.) -> *World {
 
 		world_init(level_name, depth+1);
 	}
+
 	return w;
 }
 
@@ -1119,8 +1120,10 @@ get_box_percent_pos :: (box : *Box, percent : float) -> Vector2{
 
 // Holding World data for spawning actors
 Level :: struct {
+	//VERSION :: 1; @CLEAN don't know if we need this
 	name : string;
 	spawners : [..] ActorSpawner;
+	tilegrid : TileGrid(MAX_TILEGRID_LAYERS, MAX_TILEGRID_CELLS, MAX_TILEGRID_CELLS);
 }
 
 ActorSpawner :: struct {
