@@ -154,7 +154,7 @@ render_subwindow_file_cmds :: (state: *Subwindow_State, r: Rect, data: *void) {
 	// category filters
 	rcat := Rect.{r.x, r.y+r.h-lh, r.w, lh};
 	filters := enum_names(AssetFilterType);
-	changed, state := dropdown(rcat, filters, *file_filter_index, *hud_theme.dropdown_theme);
+	dropdown(rcat, filters, *file_filter_index, *hud_theme.dropdown_theme);
 
 	// ~~~ Asset File Selection ~~~
 
@@ -440,7 +440,6 @@ render_subwindow_view_sprite :: (state: *Subwindow_State, r: Rect, data: *void) 
 	draw_rect(rstats, GREY*0.1);
 	{
 		layout := VerticalLayout.{ root=.{rstats.x, rstats.y, rstats.w, lh} };
-
 		ui_label(*layout, "Version: %", sprite_asset.VERSION);
 		ui_label(*layout, "Frame Current: %", sprite_asset.frame_current);
 		ui_label(*layout, "Play Length: %", sprite_asset.play_length);

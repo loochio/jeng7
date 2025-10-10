@@ -1214,6 +1214,15 @@ level_load :: (name : string, level : *Level) -> bool {
 		}
 	}
 
+	// tile grids
+	{
+		origin := Vector2.{0,0};
+		level.tilegrid.position = .{
+			origin.x - MAX_TILEGRID_CELLS/2 * TILEGRID_CELL_SIZE,
+			origin.y - MAX_TILEGRID_CELLS/2 * TILEGRID_CELL_SIZE, 
+		};
+	}
+
 	if name != level.name {
 		log("\told name [%] detected on level=%, updating name\n", level.name, name);
 		string_reset(*level.name);
@@ -1233,8 +1242,9 @@ level_reset :: (level : *Level) {
 		spawner_reset(it);
 	}
 
-	if level.spawners.data != null
+	if level.spawners.data != null {
 		array_reset(*level.spawners);
+	}
 }
 
 spawner_reset :: (spawner : *ActorSpawner) {

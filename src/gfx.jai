@@ -13,16 +13,6 @@ ShaderTexture :: enum u32 {
 	PalletTint;
 }
 
-//@CLEAN old
-//shader_custom := Shader.{
-//	filename = "custom.glsl",
-//};
-//
-//shader_custom_blend := Shader.{
-//	filename = "custom.glsl",
-//	alpha_blend = true,
-//};
-
 shader_smoke := Shader.{
 	filename = "smoke.glsl",
 	alpha_blend = true,
@@ -47,8 +37,6 @@ draw_gfx_test :: () {
 
 shader_init :: () {
 	log("Reloading shaders.");
-	//shader_load(*shader_custom); @CLEAN
-	//shader_load(*shader_custom_blend);
 	shader_load(*shader_smoke);
 	shader_load(*shader_pallet_tint);
 
@@ -174,7 +162,6 @@ draw_circle :: (center_window : Vector2, radius_outer : float, radius_inner : fl
 		percent_begin := 0.) 
 {
 	set_shader();
-	//set_shader_for_color(true); @CLEAN
 	NUM_SEGMENTS :: 16;
 	last_p0, last_p1: Vector2 = ---;
 

@@ -69,7 +69,7 @@ editor_init :: () {
         subwindow_info_tools.title_text = "Tools";
     }
     { // details 
-        r := get_rect(xx (window_width-300), 0, 300, 300);
+        r := get_rect(0, window_height/2., 300, 400);
         subwindow_info_details.rect = r;
         subwindow_info_details.draw = draw_subwindow_details;
         subwindow_info_details.title_text = "Details";
@@ -186,6 +186,25 @@ editor_render :: (dt : float) {
 			draw_square(pos, size, c);
 		}
 	}
+
+	// tilemap
+	//@TODO move to gfx.jai when its ready
+	{
+		slice : u8 = 0;
+		for grid : editor_level.tilegrid.layers {
+			for entry : grid {
+				assert(entry.id != 0, "id=% [%,%]", entry.id, it_index.x, it_index.y);
+
+				pos_in_grid := get_pos_in_tilegrid(*editor_level.tilegrid, it_index.x, it_index.y);
+				pos := vec_editor_to_window(pos_in_grid);
+				draw_tilemap(entry.id, entry.slice, pos, scale);
+			}
+		}
+
+		//debug rendering
+		draw_circle(origin, 25, color=MAGENTA);
+	}
+
 	
 	// draw spawners
 	for editor_level.spawners {
@@ -212,13 +231,15 @@ editor_render :: (dt : float) {
     draw_popups();
 }
 
+level_input_id := 0;
+
 draw_subwindow_level :: (state: *Subwindow_State, r: Rect, data: *void) {
 	line := 1;
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	{// level name 
 		r0 := Rect.{r.x, r.y+r.h-lh, r.w/2., lh};
-		level_name := tprint("% %", editor_level.name, ifx dirty then "[*]" else "");
+		level_name := tprint("Name: % %", editor_level.name, ifx dirty then "[*]" else "");
     	label(r0, level_name, *hud_theme.label_theme);
 	}
 	bw := r.w*.25;
@@ -236,13 +257,15 @@ draw_subwindow_level :: (state: *Subwindow_State, r: Rect, data: *void) {
 		r0 := Rect.{r.x, r.y+r.h-(lh*line)-p, bw, lh};
 		if button(r0, "Load", *hud_theme.button_theme) { 
 			editor_load(level_to_load);
-			level_to_load = ""; //@TODO this doesn't clear our input text, why?
+			level_to_load = "";
+			level_input_id += 1;
 		}
 
 		r1 := Rect.{r0.x+r0.w, r0.y, bw, r0.h};
 		if button(r1, "New", *hud_theme.button_theme) { 
 			editor_new_level(level_to_load); 
 			level_to_load = "";
+			level_input_id += 1;
 		}
 
 		text_theme := hud_theme.text_input_theme;
@@ -250,7 +273,7 @@ draw_subwindow_level :: (state: *Subwindow_State, r: Rect, data: *void) {
 		text_theme.font = hud_font;
 
 		r2 := Rect.{r1.x+r1.w, r1.y, bw*2, r1.h};
-		action, text, state := text_input(r2, level_to_load, *text_theme);
+		action, text, state := text_input(r2, level_to_load, *text_theme, identifier=level_input_id);
 		level_to_load = state.text;
 		line += 1;
 	}
@@ -298,8 +321,9 @@ editor_new_level :: (name : string) {
 		return;
 	}
 
-	if is_valid(*editor_level)
+	if is_valid(*editor_level) {
 		level_reset(*editor_level);
+	}
 
 	editor_level.name = sprint(name);
 	dirty = true;
@@ -388,19 +412,14 @@ editor_selection_move :: (dv : Vector2) {
 
 // ~~~~~~ TOOLS ~~~~~~
 
-
 draw_subwindow_tools :: (state: *Subwindow_State, r: Rect, data: *void) {
 	// active tool info
 	p := 4.;
 	lh := cast(float)hud_font_pixel_height+p;
 	r0 := Rect.{r.x, r.y+r.h-lh, r.w, lh};
     {
- 	   changed, state := dropdown(r0, tool_options, *tool_index, *hud_theme.dropdown_theme);
- 	   if changed {
- 	   		//@FIXME changed doesn't register
- 			set_tool(tool_index);
- 	   }
- 	   //tool = tools[tool_index]; @CLEAN
+ 	   	dropdown(r0, tool_options, *tool_dropdown_index, *hud_theme.dropdown_theme);
+ 		set_tool(tool_dropdown_index);
     }
 
     // tool sub-section
@@ -427,7 +446,8 @@ EditorToolProc_RenderSubWindow :: #type (t : *EditorTool, state: *Subwindow_Stat
 tool : *EditorTool;
 tools : [..] *EditorTool;
 tool_options : [..] string;
-tool_index : s32;
+tool_index : s32; //actively selected tool
+tool_dropdown_index : s32 = 0; //pointer used for dropdown
 
 register_tool :: (tool : *EditorTool) {
 	assert(tool != null);
@@ -438,8 +458,11 @@ register_tool :: (tool : *EditorTool) {
 }
 
 set_tool :: (index : s32) {
+	if tool_index == index return;
+
 	tool = tools[index];
 	tool_index = index;
+	tool_dropdown_index = tool_index;
 	print("Tool set to [%]\n", tool.name);
 
 	if tool.proc_init tool.proc_init(tool);
@@ -529,15 +552,36 @@ tool_actor_render_subwindow :: (t : *EditorTool, state: *Subwindow_State, r: Rec
 		if !is_valid_actor_spawner(type) continue;
 
 		//@TODO render this button with the sprite
-		sprite := get_sprite(type);
-		assert(sprite.texture != null);
-
+		tex := get_texture("T_world_entrance"); //default
+		
+		if type== {
+			//case .Hero; 		return get_sprite("S_hero");
+			//case .HeroRed; 		return get_sprite("S_hero_red");
+			case .Kid; 			tex = get_texture("T_bug_preview");
+//
+			//case .WorldEntrance; return get_sprite("S_world_entrance");
+			//case .WorldExit; 	return get_sprite("S_world_exit");
+//
+			//case .Block; 		return get_sprite("S_block");
+//
+			case .Console; 		tex = get_texture("T_button_sq_green_preview");
+			case .ConsoleMovable; tex = get_texture("T_button_c_green_preview");
+			//case .WallLock; 	return get_sprite("S_lock_green");
+			//case .WallLockBig; 	return get_sprite("S_lock_big");
+//
+			//case .DropZone; 	return get_sprite("S_zone_drop");
+			//case .TimerResetA; 	return get_sprite("S_zone_reset_green");
+//
+			//case .Sign; 	return get_sprite("S_sign");
+		}
+		assert(tex != null);
+		
     	rbtn := Rect.{0,0, AB,AB};
     	col := (index % COLUMNS) * AB;
     	rbtn.x = root.x + col;
     	row := (index / COLUMNS) * AB;
     	rbtn.y = root.y - row - rbtn.h;
-    	if button(rbtn, "", *hud_theme.button_theme, texture=sprite.texture, identifier=it) {
+    	if button(rbtn, "", *hud_theme.button_theme, texture=*tex.texture, identifier=it) {
     		atool.actor_type = type;
 	    }
 	    index +=1;
@@ -759,24 +803,26 @@ tool_tilemap_tick :: (t : *EditorTool, dt : float) {
 	tg := *editor_level.tilegrid;
 
 	if is_input_down(.MOUSE_BUTTON_LEFT) {
+		layer := tmtool.selected_layer;
 		// delete
 		if input_mod_ctrl {
-			log("delete: layer=%", tmtool.selected_layer);
+			log("delete: layer=%", layer);
 
 			pos := Vector2.{cursor_box.x, cursor_box.y};
 			if is_pos_in_tilegrid(tg, pos) {
 				x,y := get_tilegrid_coords_from_pos(tg, pos);
-				erase_tilegrid_cell(tg, tmtool.selected_layer, x, y);
+				erase_tilegrid_cell(tg, layer, x, y);
 			}
 		}
 		// add
 		else {
-			log("paint: layer=% tile=%", tmtool.selected_layer, tmtool.selected_tiletype);
-
 			pos := Vector2.{cursor_box.x, cursor_box.y};
 			if is_pos_in_tilegrid(tg, pos) {
 				x,y := get_tilegrid_coords_from_pos(tg, pos);
-				set_tilegrid_cell(tg, tmtool.selected_layer, x, y, tmtool.selected_tiletype);
+				set_tilegrid_cell(tg, layer, x, y, tmtool.selected_tiletype);
+
+				entry := get_tilegrid_entry(tg, layer, x, y);
+				log("paint: layer=% tile=% pos=% entry=%", layer, tmtool.selected_tiletype, pos, entry);
 			}
 		}
 	}
@@ -785,17 +831,26 @@ tool_tilemap_tick :: (t : *EditorTool, dt : float) {
 tool_tilemap_render :: (t : *EditorTool, dt : float) {}
 
 tool_tilemap_render_subwindow :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
-	tm_tool := cast(*EditorTool_Tilemap)t;
-	tg := editor_level.tilegrid;
+	tmtool := cast(*EditorTool_Tilemap)t;
+	//tg : *TileGrid = editor_level.tilegrid;
 
 	lh := cast(float)hud_font_pixel_height+4.;
 	layout := VerticalLayout.{ root=.{r.x, r.y, r.w, lh} };
 
-	ui_label(*layout, "Position: %", tg.position);
-	slider(ui_next(*layout), *tm_tool.selected_layer, 0, tg.layers.count-1, 1, *hud_theme.slider_theme, "Edit Layer: ", "");
+	ui_label(*layout, "Position: %", editor_level.tilegrid.position);
+	ui_line(*layout);
+
+	slider(ui_next(*layout), *tmtool.selected_layer, 0, editor_level.tilegrid.layers.count-1, 1, *hud_theme.slider_theme, "Edit Layer: ", "");
+	ui_line(*layout);
+	
+	ui_label(*layout, "Selected TileMap: %", tmtool.selected_tiletype);
 
 	for tilemaps {
-		ui_label(*layout, "Tilemap: %/%", it_index, it.texture_guid);
+		txt := tprint("Tilemap: %/%", it_index, it.texture_guid);
+		if button(ui_next(*layout), txt, identifier=it_index) {
+			log("tiel selected %", it);
+			tmtool.selected_tiletype = it_index;
+		}
 	}
 }
 
@@ -810,3 +865,4 @@ tool_tilemap_select_layer_down :: (tool : *EditorTool_Tilemap) {
 	if tool.selected_layer < 0
 		tool.selected_layer = editor_level.tilegrid.layers.count-1;
 }
+
