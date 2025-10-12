@@ -1228,7 +1228,7 @@ ui_line :: (layout : *VerticalLayout) {
 
 ui_next :: (layout : *VerticalLayout) -> Rect {
 	ui_line(layout);
-	return layout.root;
+	return layout.root; // root get's modified by ui_line(..)
 }
 
 ui_label :: (layout : *VerticalLayout, fmt : string, args : .. Any) {
@@ -1265,6 +1265,11 @@ ui_grid_init :: (using lo : *GridLayout) {
 		array_add(*column_rects, r);
 		xoffset += r.w;
 	}
+}
+
+ui_grid_deinit :: (using lo : *GridLayout) {
+	array_reset(*column_pct);
+	array_reset(*column_rects);
 }
 
 ui_col :: (layout : *GridLayout, col := 0) -> Rect {
@@ -1440,9 +1445,7 @@ TileMap :: struct {
 	id := 0;
 }
 
-//@CLEAN MAX_TILEGRID_LAYERS :: 4; //@TODO make this a dynamic collection
 MAX_TILEGRID_CELLS :: 128;
-//TILEGRID_CELL_SIZE :: 32.; // world units @CLEAN
 MAX_TILEMAPS :: 32;
 tilemaps : Table(s64, TileMap);
 
@@ -1505,6 +1508,13 @@ tilegrid_remove_layer :: (tg : *TileGrid, layer : s64) {
 	assert(layer >= 0 && layer < tg.layers.count, "layer=%", layer);
 	string_reset(*tg.layers[layer].name);
 	array_unordered_remove_by_index(*tg.layers, layer);
+}
+
+tilegrid_clear_layer :: (tg : *TileGrid, layer : s64) {
+	assert(layer >= 0 && layer < tg.layers.count, "layer=%", layer);
+	for tg.layers[layer].grid {
+		erase_tilegrid_cell(tg, layer, it_index.x, it_index.y);
+	}
 }
 
 get_tilegrid_coords_from_pos :: (tg : *TileGrid, pos : Vector2) -> (x : s64, y : s64) {
@@ -1600,7 +1610,6 @@ tilegrid_shift_layer_up :: (tg : *TileGrid, layer : s64) -> (changed:bool, new_l
 	if layer == tg.layers.count-1 return false, layer;
 
 	assert(layer >= 0 && layer < tg.layers.count-1, "%", layer);
-	log("shift up, layer=%", layer);
 	temp := tg.layers[layer];
 	tg.layers[layer] = tg.layers[layer+1];
 	tg.layers[layer+1] = temp;
@@ -1611,7 +1620,6 @@ tilegrid_shift_layer_down :: (tg : *TileGrid, layer : s64) -> (changed:bool, new
 	if layer == 0 return false, layer;
 
 	assert(layer > 0 && layer <= tg.layers.count-1, "%", layer);
-	log("shift down, layer=%", layer);
 	temp := tg.layers[layer];
 	tg.layers[layer] = tg.layers[layer-1];
 	tg.layers[layer-1] = temp;
