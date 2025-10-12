@@ -1120,10 +1120,10 @@ get_box_percent_pos :: (box : *Box, percent : float) -> Vector2{
 
 // Holding World data for spawning actors
 Level :: struct {
-	//VERSION :: 1; @CLEAN don't know if we need this
+	VERSION :: 1;
 	name : string;
 	spawners : [..] ActorSpawner;
-	tilegrid : TileGrid(MAX_TILEGRID_LAYERS, MAX_TILEGRID_CELLS, MAX_TILEGRID_CELLS);
+	tilegrid : TileGrid;
 }
 
 ActorSpawner :: struct {
@@ -1133,10 +1133,18 @@ ActorSpawner :: struct {
 	data : string;
 }
 
+is_valid_level_name :: (name : string) -> bool {
+	path := tprint("levels/%.level", name);
+	return file_exists(path);
+}
+
 level_save :: (level : *Level) {
 	path := tprint("levels/%.level", level.name);
 	builder: String_Builder;
 	init_string_builder(*builder);
+
+	ver := level.VERSION;
+	append(*builder, cast(*u8)*ver, size_of(s64));
 
 	// level name
 	name_len := cast(*u8)*level.name.count;
@@ -1156,17 +1164,134 @@ level_save :: (level : *Level) {
 		append(*builder, it.data);
 	}
 
+	// tilegrid
+	append(*builder, cast(*u8)*level.tilegrid.position, size_of(Vector2));
+	layer_count := cast(*u8)*level.tilegrid.layers.count;
+	append(*builder, layer_count, size_of(s64));
+	for *layer : level.tilegrid.layers {
+		// name
+		layer_name_len := cast(*u8)*layer.name.count;
+		append(*builder, layer_name_len, size_of(s64));
+		append(*builder, layer.name);
+
+		// flags
+		append(*builder, cast(*u8)*layer.flags, size_of(u8));
+
+		// grid
+		grid_cells := 0;
+		for entry : layer.grid { grid_cells += 1; }
+		append(*builder, cast(*u8)*grid_cells, size_of(s64));
+
+		for entry : layer.grid {
+			append(*builder, cast(*u8)*it_index, size_of(Coordinates));
+			append(*builder, cast(*u8)*entry, size_of(TileGridEntry));
+		}
+	}
+
 	write_entire_file(path, *builder);
 	reset(*builder);
 	log("Saved %\n", path);
 }
 
-is_valid_level_name :: (name : string) -> bool {
+level_load :: (name : string, level : *Level) -> bool {
 	path := tprint("levels/%.level", name);
-	return file_exists(path);
+	buffer, success := read_entire_file(path);
+
+	if !success {
+		log_error("Failed to load level: %\n", path);
+		return false;
+	}
+
+	// Level should have been freed before hand
+	assert(level.name.count == 0, "%", level.name);
+	assert(level.spawners.count == 0 && level.spawners.data == null);
+
+	// version checking
+	ver := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*ver, size_of(s64));
+
+	if ver != level.VERSION {
+		level_load_v0_to_v1(name, level);
+		free(buffer);
+		return true;
+	}
+
+	assert(ver == level.VERSION, "file level=% struct ver=%", ver, level.VERSION);
+
+	// name
+	name_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*name_len, size_of(s64));
+	level.name = alloc_string(name_len);
+	consume_u8_and_length(*buffer, level.name.data, name_len);
+
+ 	// spawners
+	spawner_len := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*spawner_len, size_of(s64));
+	assert(level.spawners.count == 0);
+	for 0..spawner_len-1 {
+		spawner := ActorSpawner.{};
+		consume_u8_and_length(*buffer, cast(*u8)*spawner, size_of(ActorSpawner));
+
+		len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*len, size_of(s64));
+		spawner.data = alloc_string(len);
+		consume_u8_and_length(*buffer, spawner.data.data, len);
+
+		//@TODO need to figure out this enum validation
+		if type_of(spawner.type) == ActorType {
+			array_add(*level.spawners, spawner);
+		}
+		else{
+			log_error("\tFailed to parse spawner: % in level=%\n", spawner.type, level.name);
+		}
+
+		{// Validation
+			low, high := enum_range(ActorType);
+			type : s64 = xx spawner.type;
+			assert(type >= low, "%", type);
+			assert(type <= high, "%", type);
+		}
+	}
+
+	// tile grids
+	consume_u8_and_length(*buffer, cast(*u8)*level.tilegrid.position, size_of(Vector2));
+	layers_count := 0;
+	consume_u8_and_length(*buffer, cast(*u8)*layers_count, size_of(s64));
+	for layer_idx : 0..layers_count-1 {
+		layer := array_add(*level.tilegrid.layers);
+		
+		len := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*len, size_of(s64));
+		layer.name = alloc_string(len);
+		consume_u8_and_length(*buffer, layer.name.data, len);
+
+		consume_u8_and_length(*buffer, cast(*u8)*layer.flags, size_of(u8));
+
+		// grid
+		grid_cell_count := 0;
+		consume_u8_and_length(*buffer, cast(*u8)*grid_cell_count, size_of(s64));
+		for 0..grid_cell_count-1 {
+			coords : Coordinates;
+			consume_u8_and_length(*buffer, cast(*u8)*coords, size_of(Coordinates));
+			entry : TileGridEntry;
+			consume_u8_and_length(*buffer, cast(*u8)*entry, size_of(TileGridEntry));
+			set_tilegrid_cell(*level.tilegrid, layer_idx, coords.x, coords.y, entry.id);
+		}
+	}
+
+	if name != level.name {
+		log("\told name [%] detected on level=%, updating name\n", level.name, name);
+		string_reset(*level.name);
+		level.name = sprint(name);
+	}
+
+	log("LOADED: name=% | spawners=%\n", level.name, level.spawners.count);
+
+	return true;
 }
 
-level_load :: (name : string, level : *Level) -> bool {
+//@CLEAN
+level_load_v0_to_v1 :: (name : string, level : *Level) -> bool {
 	path := tprint("levels/%.level", name);
 	buffer, success := read_entire_file(path);
 
@@ -1214,22 +1339,16 @@ level_load :: (name : string, level : *Level) -> bool {
 		}
 	}
 
-	// tile grids
-	{
-		origin := Vector2.{0,0};
-		level.tilegrid.position = .{
-			origin.x - MAX_TILEGRID_CELLS/2 * TILEGRID_CELL_SIZE,
-			origin.y - MAX_TILEGRID_CELLS/2 * TILEGRID_CELL_SIZE, 
-		};
-	}
-
 	if name != level.name {
 		log("\told name [%] detected on level=%, updating name\n", level.name, name);
 		string_reset(*level.name);
 		level.name = sprint(name);
 	}
 
-	log("LOADED: name=% | spawners=%\n", level.name, level.spawners.count);
+	level_save(level);
+
+	log("Migrated: name=% | spawners=%\n", level.name, level.spawners.count);
+
 	return true;
 }
 
@@ -1245,6 +1364,8 @@ level_reset :: (level : *Level) {
 	if level.spawners.data != null {
 		array_reset(*level.spawners);
 	}
+
+	tilegrid_reset(*level.tilegrid);
 }
 
 spawner_reset :: (spawner : *ActorSpawner) {

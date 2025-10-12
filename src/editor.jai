@@ -191,8 +191,8 @@ editor_render :: (dt : float) {
 	//@TODO move to gfx.jai when its ready
 	{
 		slice : u8 = 0;
-		for grid : editor_level.tilegrid.layers {
-			for entry : grid {
+		for *layer : editor_level.tilegrid.layers {
+			for entry : layer.grid {
 				assert(entry.id != 0, "id=% [%,%]", entry.id, it_index.x, it_index.y);
 
 				pos_in_grid := get_pos_in_tilegrid(*editor_level.tilegrid, it_index.x, it_index.y);
@@ -200,9 +200,6 @@ editor_render :: (dt : float) {
 				draw_tilemap(entry.id, entry.slice, pos, scale);
 			}
 		}
-
-		//debug rendering
-		draw_circle(origin, 25, color=MAGENTA);
 	}
 
 	
@@ -802,16 +799,17 @@ tool_tilemap_tick :: (t : *EditorTool, dt : float) {
 	assert(tmtool != null);
 	tg := *editor_level.tilegrid;
 
+	if !is_valid(tg) return;
+
 	if is_input_down(.MOUSE_BUTTON_LEFT) {
 		layer := tmtool.selected_layer;
 		// delete
 		if input_mod_ctrl {
-			log("delete: layer=%", layer);
-
 			pos := Vector2.{cursor_box.x, cursor_box.y};
 			if is_pos_in_tilegrid(tg, pos) {
 				x,y := get_tilegrid_coords_from_pos(tg, pos);
 				erase_tilegrid_cell(tg, layer, x, y);
+				dirty = true;
 			}
 		}
 		// add
@@ -820,9 +818,7 @@ tool_tilemap_tick :: (t : *EditorTool, dt : float) {
 			if is_pos_in_tilegrid(tg, pos) {
 				x,y := get_tilegrid_coords_from_pos(tg, pos);
 				set_tilegrid_cell(tg, layer, x, y, tmtool.selected_tiletype);
-
-				entry := get_tilegrid_entry(tg, layer, x, y);
-				log("paint: layer=% tile=% pos=% entry=%", layer, tmtool.selected_tiletype, pos, entry);
+				dirty = true;
 			}
 		}
 	}
@@ -832,37 +828,74 @@ tool_tilemap_render :: (t : *EditorTool, dt : float) {}
 
 tool_tilemap_render_subwindow :: (t : *EditorTool, state: *Subwindow_State, r: Rect, data: *void) {
 	tmtool := cast(*EditorTool_Tilemap)t;
-	//tg : *TileGrid = editor_level.tilegrid;
 
 	lh := cast(float)hud_font_pixel_height+4.;
 	layout := VerticalLayout.{ root=.{r.x, r.y, r.w, lh} };
 
-	ui_label(*layout, "Position: %", editor_level.tilegrid.position);
+	if button(ui_next(*layout), "Add Layer") {
+		name := tprint("New Layer (%)", editor_level.tilegrid.layers.count);
+		tilegrid_add_layer(*editor_level.tilegrid, name);
+		dirty = true;
+	}
+
+	// layer buttons
+	grid_layout := GridLayout.{ 
+		root = ui_next(*layout), 
+		columns = float.[1.0, 0.25, 0.25, 0.25],
+	};
+	ui_grid_init(*grid_layout);
+	ui_line(*grid_layout);
 	ui_line(*layout);
 
-	slider(ui_next(*layout), *tmtool.selected_layer, 0, editor_level.tilegrid.layers.count-1, 1, *hud_theme.slider_theme, "Edit Layer: ", "");
+	for editor_level.tilegrid.layers {
+		ui_line(*grid_layout);
+		ui_line(*layout);
+		
+		txt := tprint("%|%", ifx it_index==tmtool.selected_layer then ">>" else "", it.name);
+		if button(ui_col(*grid_layout, 0), txt, identifier=it_index + (1 << 10)) {
+			tmtool.selected_layer = it_index;
+		}
+
+		disable_up :=  it_index >= editor_level.tilegrid.layers.count-1;
+		up_txt := ifx disable_up then "-" else "^";
+		if button(ui_col(*grid_layout, 1), up_txt, identifier=it_index+ (2 << 10), disable_press=disable_up, disable_over=disable_up) {
+			changed, result := tilegrid_shift_layer_up(*editor_level.tilegrid, it_index);
+			if changed && it_index == tmtool.selected_layer {
+				tmtool.selected_layer = result;
+				dirty = true;
+				break;
+			}
+		}
+
+		disable_down := it_index <= 0;
+		down_txt := ifx disable_down then "-" else "v";
+		if button(ui_col(*grid_layout, 2), down_txt, identifier=it_index+ (3 << 10), disable_press=disable_down, disable_over=disable_down) {
+			changed, result := tilegrid_shift_layer_down(*editor_level.tilegrid, it_index);
+			if changed && it_index == tmtool.selected_layer {
+				tmtool.selected_layer = result;
+				dirty = true;
+				break;
+			}
+		}
+
+		if button(ui_col(*grid_layout, 3), "X", identifier=it_index+ (4 << 10)) {
+			tilegrid_remove_layer(*editor_level.tilegrid, it_index);
+			if it_index == tmtool.selected_layer {
+				tmtool.selected_layer = 0;
+				dirty = true;
+			}
+			break;
+		}
+	}
+	ui_label(*layout, "Layers");
 	ui_line(*layout);
-	
+
 	ui_label(*layout, "Selected TileMap: %", tmtool.selected_tiletype);
 
 	for tilemaps {
 		txt := tprint("Tilemap: %/%", it_index, it.texture_guid);
 		if button(ui_next(*layout), txt, identifier=it_index) {
-			log("tiel selected %", it);
 			tmtool.selected_tiletype = it_index;
 		}
 	}
 }
-
-tool_tilemap_select_layer_up :: (tool : *EditorTool_Tilemap) {
-	tool.selected_layer += 1;
-	if tool.selected_layer >= editor_level.tilegrid.layers.count
-		tool.selected_layer = 0;
-}
-
-tool_tilemap_select_layer_down :: (tool : *EditorTool_Tilemap) {
-	tool.selected_layer -= 1;
-	if tool.selected_layer < 0
-		tool.selected_layer = editor_level.tilegrid.layers.count-1;
-}
-

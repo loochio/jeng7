@@ -1414,14 +1414,25 @@ has_neighbor :: (grid : *Grid, x : s64, y : s64, direction : GridDirection) -> b
 // TileGrid layout of indices, represents the object that exists in the world
 // id is mapped to a unique Tilemap
 // index is looked up in a TileMap, Tilemap translates index to tex slice
-TileGrid :: struct (max_layers : s64, count_x : s64, count_y : s64, cell_size := TILEGRID_CELL_SIZE) {
-	layers : [max_layers] Grid(count_x, count_y, TileGridEntry);
+TileGrid :: struct () {
+	layers : [..] TileGridLayer;
 	position : Vector2; // world position origin
+	CELL_SIZE :: 32.0;
+}
+
+TileGridLayer :: struct {
+	grid : Grid(MAX_TILEGRID_CELLS, MAX_TILEGRID_CELLS, TileGridEntry);
+	name : string;
+	flags : TileGridLayerFlags = 0;
 }
 
 TileGridEntry :: struct {
-	id := 0; 		// tilemap id
+	id := 0; 			// tilemap id
 	slice : u8 = 0; 	//[0-15] dependent on neighbors, determines slice of tilemap to draw
+}
+
+TileGridLayerFlags :: enum_flags u8 {
+	Hidden :: 1;
 }
 
 TileMap :: struct {
@@ -1429,20 +1440,19 @@ TileMap :: struct {
 	id := 0;
 }
 
-MAX_TILEGRID_LAYERS :: 4; //@TODO make this a dynamic collection
+//@CLEAN MAX_TILEGRID_LAYERS :: 4; //@TODO make this a dynamic collection
 MAX_TILEGRID_CELLS :: 128;
-TILEGRID_CELL_SIZE :: 32.; // world units
+//TILEGRID_CELL_SIZE :: 32.; // world units @CLEAN
 MAX_TILEMAPS :: 32;
-tilemap_id := 0;
 tilemaps : Table(s64, TileMap);
 
 tilemaps_init :: () {
-	tilemap_id = 0;
 	init(*tilemaps, MAX_TILEMAPS);
 
-	tilemaps_add("T_tm_grid");
-	tilemaps_add("T_tm_grass");
-	tilemaps_add("T_tm_brick");
+	// hard assign these to IDs for serialization
+	tilemaps_add("T_tm_grid", 1);
+	tilemaps_add("T_tm_grass", 2);
+	tilemaps_add("T_tm_brick", 3);
 }
 
 tilemaps_deinit :: () {
@@ -1452,15 +1462,15 @@ tilemaps_deinit :: () {
 	deinit(*tilemaps);
 }
 
-tilemaps_add :: (texture_guid : string) -> *TileMap {
+tilemaps_add :: (texture_guid : string, id : s64) -> *TileMap {
 	assert(is_valid(texture_guid));
-	tilemap_id += 1;
+	assert(!table_contains(*tilemaps, id), "id=%", id);
 	tm := TileMap.{ 
 		sprint(texture_guid), 
-		tilemap_id 
+		id,
 	};
-	result := table_add(*tilemaps, tilemap_id, tm);
-	assert(result != null, "Texture GUID=% id=%", texture_guid, tilemap_id);
+	result := table_add(*tilemaps, id, tm);
+	assert(result != null, "Texture GUID=% id=%", texture_guid, id);
 	return result;
 }
 
@@ -1474,31 +1484,56 @@ is_valid_tilemap_id :: (id : s64) -> bool {
 	return table_contains(*tilemaps, id);
 }
 
+is_valid :: (tg : *TileGrid) -> bool{
+	return tg.layers.count > 0;
+}
+
+tilegrid_reset :: (tg : *TileGrid) {
+	for * tg.layers {
+		string_reset(*it.name);
+	}
+	array_reset(*tg.layers);
+	tg.position = .{};
+}
+
+tilegrid_add_layer :: (tg : *TileGrid, name : string) {
+	layer := array_add(*tg.layers);
+	layer.name = sprint(name);
+}
+
+tilegrid_remove_layer :: (tg : *TileGrid, layer : s64) {
+	assert(layer >= 0 && layer < tg.layers.count, "layer=%", layer);
+	string_reset(*tg.layers[layer].name);
+	array_unordered_remove_by_index(*tg.layers, layer);
+}
+
 get_tilegrid_coords_from_pos :: (tg : *TileGrid, pos : Vector2) -> (x : s64, y : s64) {
 	assert(is_pos_in_tilegrid(tg, pos));
 	p := pos - tg.position;
-	x := cast(s64)(p.x / tg.cell_size);
-	y := cast(s64)(p.y / tg.cell_size);
+	x := cast(s64)(p.x / tg.CELL_SIZE);
+	y := cast(s64)(p.y / tg.CELL_SIZE);
 	return x, y;
 }
 
 get_pos_in_tilegrid :: (tg : *TileGrid, x : s64, y : s64) -> Vector2 {
 	result := Vector2.{
-		(x+0.5) * tg.cell_size + tg.position.x,
-		(y+0.5) * tg.cell_size + tg.position.y
+		(x+0.5) * tg.CELL_SIZE + tg.position.x,
+		(y+0.5) * tg.CELL_SIZE + tg.position.y
 	};
 	assert(is_pos_in_tilegrid(tg, result), "result:% | %,%", result, x, y);
 	return result;
 }
 
 is_pos_in_tilegrid :: (tg : *TileGrid, pos : Vector2) -> bool {
+	assert(is_valid(tg));
 	return pos.x >= tg.position.x 
 		&& pos.y >= tg.position.y 
-		&& pos.x <= tg.position.x+(tg.cell_size*tg.count_x)
-		&& pos.y <= tg.position.y+(tg.cell_size*tg.count_y);
+		&& pos.x <= tg.position.x+(tg.CELL_SIZE*tg.layers[0].grid.count_x)
+		&& pos.y <= tg.position.y+(tg.CELL_SIZE*tg.layers[0].grid.count_y);
 }
 
 set_tilegrid_cell :: (tg : *TileGrid, layer : s64, x : s64, y : s64, tm_id : s64) {
+	assert(is_valid(tg));
 	assert(tm_id >= 0);
 	assert(layer >= 0 && layer < tg.layers.count);
 
@@ -1506,11 +1541,11 @@ set_tilegrid_cell :: (tg : *TileGrid, layer : s64, x : s64, y : s64, tm_id : s64
 		assert(is_valid_tilemap_id(tm_id));
 
 		entry := TileGridEntry.{tm_id, 0};
-		grid_set(*tg.layers[layer], x, y, entry);
-		assert(grid_occupied(*tg.layers[layer], x, y));
+		grid_set(*tg.layers[layer].grid, x, y, entry);
+		assert(grid_occupied(*tg.layers[layer].grid, x, y));
 	}
 	else {
-		grid_remove(*tg.layers[layer], x, y);
+		grid_remove(*tg.layers[layer].grid, x, y);
 	}
 	
 	// update slice of all surrounding grid cells
@@ -1522,16 +1557,16 @@ set_tilegrid_cell :: (tg : *TileGrid, layer : s64, x : s64, y : s64, tm_id : s64
 }
 
 set_tilegrid_slice :: (tg : *TileGrid, layer : s64, x : s64, y : s64) {
-	if !grid_occupied(*tg.layers[layer], x, y) return;
+	if !grid_occupied(*tg.layers[layer].grid, x, y) return;
 
-	entry := grid_get(*tg.layers[layer], x, y);
+	entry := grid_get(*tg.layers[layer].grid, x, y);
 	entry.slice = get_tilegrid_slice(tg, layer, x, y);
-	grid_set(*tg.layers[layer], x, y, entry);
+	grid_set(*tg.layers[layer].grid, x, y, entry);
 }
 
 //@OPTIMIZE not sure if return-by-value is good idea here
 get_tilegrid_entry :: (tg : *TileGrid, layer : s64, x : s64, y : s64) -> TileGridEntry {
-	return grid_get(*tg.layers[layer], x, y);
+	return grid_get(*tg.layers[layer].grid, x, y);
 }
 
 erase_tilegrid_cell :: (tg : *TileGrid, layer : s64, row : s64, col : s64) {
@@ -1539,7 +1574,7 @@ erase_tilegrid_cell :: (tg : *TileGrid, layer : s64, row : s64, col : s64) {
 }
 
 get_tilegrid_slice :: (tg : *TileGrid, layer : s64, x : s64, y : s64) -> u8 {
-	grid := *tg.layers[layer];
+	grid := *tg.layers[layer].grid;
 	if(has_neighbor(grid, x, y, .North|.East|.South|.West)) return 9;
 
 	if(has_neighbor(grid, x, y, .North|.West|.South)) return 10;
@@ -1559,6 +1594,28 @@ get_tilegrid_slice :: (tg : *TileGrid, layer : s64, x : s64, y : s64) -> u8 {
 	if (has_neighbor(grid, x, y, .South)) return 15;
 	if (has_neighbor(grid, x, y, .West)) return 2;
 	return 3;
+}
+
+tilegrid_shift_layer_up :: (tg : *TileGrid, layer : s64) -> (changed:bool, new_layer_index:s64){
+	if layer == tg.layers.count-1 return false, layer;
+
+	assert(layer >= 0 && layer < tg.layers.count-1, "%", layer);
+	log("shift up, layer=%", layer);
+	temp := tg.layers[layer];
+	tg.layers[layer] = tg.layers[layer+1];
+	tg.layers[layer+1] = temp;
+	return true, layer+1;
+}
+
+tilegrid_shift_layer_down :: (tg : *TileGrid, layer : s64) -> (changed:bool, new_layer_index:s64){
+	if layer == 0 return false, layer;
+
+	assert(layer > 0 && layer <= tg.layers.count-1, "%", layer);
+	log("shift down, layer=%", layer);
+	temp := tg.layers[layer];
+	tg.layers[layer] = tg.layers[layer-1];
+	tg.layers[layer-1] = temp;
+	return true, layer-1;
 }
 
 draw_tilemap :: (tilemap_id : s64, slice : u8, window_pos : Vector2, scale := Vector2.{1,1}, shader := ShaderTexture.PalletTint, tint := WHITE, use_window_scale := true) {
