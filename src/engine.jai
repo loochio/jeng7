@@ -604,7 +604,7 @@ texture_load :: (filename : string) -> *TextureAsset{
 	assert(!table_contains(*assets.texture_table, tx.guid), "%", tx.guid);
 	table_set(*assets.texture_table, tx.guid, tx);
 
-	log("\tLoaded Texture: file=% | GUID=%\n", filename, tx.guid);
+	//@CLEAN log("\tLoaded Texture: file=% | GUID=%\n", filename, tx.guid);
 	return tx;
 }
 
@@ -782,7 +782,7 @@ sprite_load :: (filename : string) -> *Sprite {
 	assert(!table_contains(*assets.sprite_table, spr.guid), "%", spr.guid);
 	table_set(*assets.sprite_table, spr.guid, spr);
 
-	log("\tLoaded Sprite: file=% | GUID=%\n", filename, spr.guid);
+	//@CLEAN log("\tLoaded Sprite: file=% | GUID=%\n", filename, spr.guid);
 	return spr;
 }
 
@@ -854,8 +854,8 @@ sprite_resolve :: (sprite : *Sprite) {
 
 	sprite.resolved = true;
 
-	log("\tSprite resolved, GUID=% | Tex.GUID=% frames=%\n", 
-		sprite.guid, sprite.texture_asset.guid, sprite.frames.count);
+	//@CLEAN log("\tSprite resolved, GUID=% | Tex.GUID=% frames=%\n", 
+	//	sprite.guid, sprite.texture_asset.guid, sprite.frames.count);
 }
 
 sprite_set_guid :: (sprite : *Sprite, guid : string) {
@@ -1020,7 +1020,7 @@ sound_load :: (filename : string) -> *SoundAsset{
 	assert(!table_contains(*assets.sounds_table, sfx.guid), "%", sfx.guid);
 	table_set(*assets.sounds_table, sfx.guid, sfx);
 
-	log("\tLoaded Sound: file=% | GUID=%\n", filename, sfx.guid);
+	//@CLEAN log("\tLoaded Sound: file=% | GUID=%\n", filename, sfx.guid);
 	return sfx;
 }
 
@@ -1456,6 +1456,7 @@ tilemaps_init :: () {
 	tilemaps_add("T_tm_grid", 1);
 	tilemaps_add("T_tm_grass", 2);
 	tilemaps_add("T_tm_brick", 3);
+	tilemaps_add("T_tm_brick2", 4);
 }
 
 tilemaps_deinit :: () {

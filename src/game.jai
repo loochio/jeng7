@@ -888,13 +888,13 @@ get_nest_time :: (nests := 0.) -> float {
 }
 
 get_nest_color :: (nests : float) -> Vector4 {
-	if nests < 0 		return G_PURPLE;
+	if nests < 0 		return G_PINK;
 	else if nests <= 0 	return G_BLUE;
-	else if nests <= 1 	return G_GREEN3;
+	else if nests <= 1 	return G_GREEN;
 	else if nests <= 2 	return G_YELLOW;
 	else if nests <= 3 	return G_ORANGE;
 	else if nests <= 4 	return G_RED;
-	else if nests <= 5 	return G_PURPLE;
+	else if nests <= 5 	return G_BLUE;
 	else				return G_WHITE;
 }
 
@@ -921,8 +921,29 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 		pos := Vector2.{window_clip.x, window_clip.y};
 		size := Vector2.{window_clip.w, window_clip.h};
 		color := world.background_fill * get_world_color(world);
-		//draw_square(pos, size, color, .Smoke);
 		draw_square(pos, size, color);
+	}
+
+
+	// nest scaling, accounting for tranisitons
+	enter := world.transition_enter;
+	n := ifx enter then nests - world.transition_progress else nests + world.transition_progress;
+	nscale := get_nest_scale_vec(n);
+
+	// final window scale
+	winscale := get_window_aspect_scale();
+	scale := winscale * nscale;
+
+	{ // tilegrid 
+		for *layer : world.tilegrid.layers {
+			for entry : layer.grid {
+				assert(entry.id != 0, "id=% [%,%]", entry.id, it_index.x, it_index.y);
+				pos_in_grid := get_pos_in_tilegrid(*world.tilegrid, it_index.x, it_index.y);
+				pos := vec_world_to_window(pos_in_grid, world, nests);
+				pos += pos_in_window;
+				draw_tilemap(entry.id, entry.slice, pos, scale);
+			}
+		}
 	}
 	
 	// sprite rendering, sorted by position.y
@@ -960,15 +981,6 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 		}
 		array_insert_at(*sorted_actors, a, idx);
 	}
-
-	// nest scaling, accounting for tranisitons
-	enter := world.transition_enter;
-	n := ifx enter then nests - world.transition_progress else nests + world.transition_progress;
-	nscale := get_nest_scale_vec(n);
-
-	// final window scale
-	winscale := get_window_aspect_scale();
-	scale := winscale * nscale;
 
 	// sprite rendering
 	for a : sorted_actors {
@@ -1211,7 +1223,8 @@ level_load :: (name : string, level : *Level) -> bool {
 	consume_u8_and_length(*buffer, cast(*u8)*ver, size_of(s64));
 
 	if ver != level.VERSION {
-		level_load_v0_to_v1(name, level);
+		// @CLEAN level_load_v0_to_v1(name, level);
+		assert(false);
 		free(buffer);
 		return true;
 	}
@@ -1291,6 +1304,7 @@ level_load :: (name : string, level : *Level) -> bool {
 }
 
 //@CLEAN
+/*
 level_load_v0_to_v1 :: (name : string, level : *Level) -> bool {
 	path := tprint("levels/%.level", name);
 	buffer, success := read_entire_file(path);
@@ -1351,6 +1365,8 @@ level_load_v0_to_v1 :: (name : string, level : *Level) -> bool {
 
 	return true;
 }
+*/
+
 
 level_reset :: (level : *Level) {
 	assert(is_valid(level));
@@ -2109,12 +2125,12 @@ sign_hide :: () {
 sign_render :: (dt : float) {
 	pos := Vector2.{window_width/2., window_height/2.};
 	size_win := Vector2.{xx window_width, xx window_height};
-	c := G_PURPLE3;
+	c := G_GREY2;
 	c.w = 0.7;
 	draw_square(pos, size_win, c);
 
 	size := scalar_to_window(400.);
-	draw_square(pos, .{size,size}, G_YELLOW3);
+	draw_square(pos, .{size,size}, G_YELLOW);
 
 	size2 := scalar_to_window(300.);
 	draw_square(pos, .{size2,size2}, G_YELLOW);
@@ -2258,36 +2274,58 @@ set_configs :: (filename : string) {
 
 
 // ~~~~~~~ Colors ~~~~~~~ 
+//https://lospec.com/palette-list/pico-8
+G_BLACK 		:: Vector4.{0,0,0, 1};
+G_WHITE :: Vector4.{1, 0.945, 0.91, 1};
+G_GREY :: Vector4.{0.761, 0.765, 0.78, 1};
+G_GREY2 :: Vector4.{0.514, 0.463, 0.612, 1}; // purple
+G_GREY3 :: Vector4.{0.373, 0.341, 0.31, 1};
+G_BLUE	:: Vector4.{0.161, 0.678, 1, 1};
+G_BLUE2	:: Vector4.{0.114, 0.169, 0.325, 1};
+G_RED	:: Vector4.{1, 0, 0.302, 1};
+G_RED2	:: Vector4.{0.494, 0.145, 0.325, 1};
+G_PINK	:: Vector4.{1, 0.467, 0.659, 1};
+G_GREEN :: Vector4.{0, 0.894, 0.212, 1};
+G_GREEN2 :: Vector4.{0, 0.529, 0.318, 1};
+G_YELLOW :: Vector4.{1, 0.925, 0.153, 1};
+G_ORANGE :: Vector4.{1, 0.639, 0, 1};
+G_ORANGE2 :: Vector4.{0.671, 0.322, 0.212, 1};
+G_ORANGE3 :: Vector4.{1, 0.8, 0.667, 1};
+
+
+
+//@CLEAN
+//@OLD
 //https://lospec.com/palette-list/cc-29
-G_BLACK 		:: Vector4.{0.129, 0.129, 0.137, 1};
-G_WHITE			:: Vector4.{0.949, 0.941, 0.898, 1};
-G_GREY 			:: Vector4.{0.722, 0.71, 0.725, 1};
-G_GREY2 		:: Vector4.{0.525, 0.506, 0.533, 1};
-G_GREY3 		:: Vector4.{0.392, 0.388, 0.396, 1};
-G_GREY3b	 	:: Vector4.{0.373, 0.333, 0.416, 1};
-G_GREY4 		:: Vector4.{0.271, 0.267, 0.31, 1};
-G_PURPLE	 	:: Vector4.{0.416, 0.325, 0.431, 1};
-G_PURPLE2	 	:: Vector4.{0.294, 0.255, 0.345, 1};
-G_PURPLE3 		:: Vector4.{0.208, 0.169, 0.259, 1};
-G_BLUE	 		:: Vector4.{0.294, 0.502, 0.792, 1};
-G_BLUE2 		:: Vector4.{0.263, 0.263, 0.416, 1};
-G_BLUE3 		:: Vector4.{0.227, 0.22, 0.345, 1};
-G_TEAL 			:: Vector4.{0.408, 0.761, 0.827, 1};
-G_TEAL2 		:: Vector4.{0.337, 0.482, 0.475, 1};
-G_GREEN 		:: Vector4.{0.635, 0.863, 0.78, 1};
-G_GREEN2 		:: Vector4.{0.761, 0.827, 0.408, 1};
-G_GREEN3 		:: Vector4.{0.541, 0.69, 0.376, 1};
-G_GREEN4 		:: Vector4.{0.306, 0.345, 0.29, 1};
-G_YELLOW 		:: Vector4.{0.929, 0.882, 0.62, 1};
-G_YELLOW2 		:: Vector4.{0.482, 0.447, 0.263, 1};
-G_YELLOW3 		:: Vector4.{0.698, 0.706, 0.494, 1};
-G_ORANGE 		:: Vector4.{0.827, 0.627, 0.408, 1};
-G_ORANGE2 		:: Vector4.{0.655, 0.482, 0.357, 1};
-G_ORANGE3 		:: Vector4.{0.898, 0.808, 0.706, 1};
-G_RED 			:: Vector4.{0.706, 0.322, 0.322, 1};
-G_RED2	 		:: Vector4.{0.502, 0.286, 0.227, 1};
-G_RED3 			:: Vector4.{0.929, 0.784, 0.769, 1};
-G_PINK	 		:: Vector4.{0.812, 0.541, 0.796, 1};
+//G_BLACK 		:: Vector4.{0.129, 0.129, 0.137, 1};
+//G_WHITE			:: Vector4.{0.949, 0.941, 0.898, 1};
+//G_GREY 			:: Vector4.{0.722, 0.71, 0.725, 1};
+//G_GREY2 		:: Vector4.{0.525, 0.506, 0.533, 1};
+//G_GREY3 		:: Vector4.{0.392, 0.388, 0.396, 1};
+//G_GREY3b	 	:: Vector4.{0.373, 0.333, 0.416, 1};
+//G_GREY4 		:: Vector4.{0.271, 0.267, 0.31, 1};
+//G_PURPLE	 	:: Vector4.{0.416, 0.325, 0.431, 1};
+//G_PURPLE2	 	:: Vector4.{0.294, 0.255, 0.345, 1};
+//G_PURPLE3 		:: Vector4.{0.208, 0.169, 0.259, 1};
+//G_BLUE	 		:: Vector4.{0.294, 0.502, 0.792, 1};
+//G_BLUE2 		:: Vector4.{0.263, 0.263, 0.416, 1};
+//G_BLUE3 		:: Vector4.{0.227, 0.22, 0.345, 1};
+//G_TEAL 			:: Vector4.{0.408, 0.761, 0.827, 1};
+//G_TEAL2 		:: Vector4.{0.337, 0.482, 0.475, 1};
+//G_GREEN 		:: Vector4.{0.635, 0.863, 0.78, 1};
+//G_GREEN2 		:: Vector4.{0.761, 0.827, 0.408, 1};
+//G_GREEN3 		:: Vector4.{0.541, 0.69, 0.376, 1};
+//G_GREEN4 		:: Vector4.{0.306, 0.345, 0.29, 1};
+//G_YELLOW 		:: Vector4.{0.929, 0.882, 0.62, 1};
+//G_YELLOW2 		:: Vector4.{0.482, 0.447, 0.263, 1};
+//G_YELLOW3 		:: Vector4.{0.698, 0.706, 0.494, 1};
+//G_ORANGE 		:: Vector4.{0.827, 0.627, 0.408, 1};
+//G_ORANGE2 		:: Vector4.{0.655, 0.482, 0.357, 1};
+//G_ORANGE3 		:: Vector4.{0.898, 0.808, 0.706, 1};
+//G_RED 			:: Vector4.{0.706, 0.322, 0.322, 1};
+//G_RED2	 		:: Vector4.{0.502, 0.286, 0.227, 1};
+//G_RED3 			:: Vector4.{0.929, 0.784, 0.769, 1};
+//G_PINK	 		:: Vector4.{0.812, 0.541, 0.796, 1};
 
 
 #load "engine.jai";

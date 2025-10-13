@@ -19,7 +19,7 @@ engine_cfg := EngineConfig.{
 	aspect = 640. / 480., //1920./1080.
 	x = 300,
 	y = 100,
-	bg_color = G_GREY4,
+	bg_color = Vector4.{.3,.3,.3,1},
 	
 	asset_folder = "assets",
 	img_folder = "/img",

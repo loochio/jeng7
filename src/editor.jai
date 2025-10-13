@@ -190,7 +190,6 @@ editor_render :: (dt : float) {
 	// tilemap
 	//@TODO move to gfx.jai when its ready
 	{
-		slice : u8 = 0;
 		for *layer : editor_level.tilegrid.layers {
 			for entry : layer.grid {
 				assert(entry.id != 0, "id=% [%,%]", entry.id, it_index.x, it_index.y);
@@ -922,11 +921,13 @@ tool_tilemap_render_details :: (t : *EditorTool, state: *Subwindow_State, r: Rec
 	tmtool := cast(*EditorTool_Tilemap)t;
 	lh := cast(float)hud_font_pixel_height+4.;
 	layout := VerticalLayout.{ root=.{r.x, r.y, r.w, lh} };
-
 	selection := tmtool.selected_layer;
+
 	tile_count := 0;
-	for editor_level.tilegrid.layers[selection].grid {
-		tile_count += 1;
+	if editor_level.tilegrid.layers.count > 0 {
+		for editor_level.tilegrid.layers[selection].grid {
+			tile_count += 1;
+		}
 	}
 	ui_label(*layout, "Tile Count=%", tile_count);
 

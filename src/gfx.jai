@@ -25,14 +25,15 @@ shader_pallet_tint := Shader.{
 
 
 draw_gfx_test :: () {
-	tx := get_texture("T_m_block");
-	x := window_center.x * .25;
-	y := window_center.y;
-	draw_texture(*tx.texture, .{x,y*.25}, .{3,3}, shader=.PalletTint);
-	draw_texture(*tx.texture, .{x,y}, .{10, 10},  shader=.PalletTint);
-
-	tx_pallet := get_texture("T_pallet_0");
-	draw_texture(*tx_pallet.texture, .{x,y*.5}, .{30,30});
+	//@CLEAN
+	//tx := get_texture("T_m_block");
+	//x := window_center.x * .25;
+	//y := window_center.y;
+	//draw_texture(*tx.texture, .{x,y*.25}, .{3,3}, shader=.PalletTint);
+	//draw_texture(*tx.texture, .{x,y}, .{10, 10},  shader=.PalletTint);
+//
+	//tx_pallet := get_texture("T_pallet_0");
+	//draw_texture(*tx_pallet.texture, .{x,y*.5}, .{30,30});
 }
 
 shader_init :: () {
