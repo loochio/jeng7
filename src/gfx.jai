@@ -86,6 +86,7 @@ set_shader :: (texture : *Texture, shader := ShaderTexture.Default) {
 			set_shader_for_images(texture);
 
 		case .PalletTint;
+			//CheckInit();
 			immediate_flush();
 			if context.simp.current_shader != *shader_pallet_tint {
 				immediate_set_shader(*shader_pallet_tint);
@@ -98,11 +99,13 @@ set_shader :: (texture : *Texture, shader := ShaderTexture.Default) {
 		        log_error("Unable to find 'diffuse_texture' in the current shader.");
 		        return;
 		    }
+
+		    glActiveTexture(GL_TEXTURE0);
+		    glBindTexture(GL_TEXTURE_2D, texture.gl_handle);  // Bind handle to slot 0.
 		    glUniform1i(tx_loc_main, 0);
 
-		    glActiveTexture(GL_TEXTURE0 + 0);
-		    glBindTexture(GL_TEXTURE_2D, texture.gl_handle);  // Bind handle to slot 0.
-		   
+		    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 	        tx_loc_pallet := glGetUniformLocation(shader_pallet_tint.gl_handle, "u_pallet");
 
@@ -110,15 +113,17 @@ set_shader :: (texture : *Texture, shader := ShaderTexture.Default) {
 		        log_error("Unable to find 'u_pallet' in the current shader.");
 		        return;
 		    }
-		    glUniform1i(tx_loc_pallet, 1);
 
 		    pallet := get_texture("T_pallet_0");
 		    glActiveTexture(GL_TEXTURE0 + 1);
 		    glBindTexture(GL_TEXTURE_2D, pallet.texture.gl_handle);
-	}
+		    glUniform1i(tx_loc_pallet, 1);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 }
 
 set_uniform :: (shader: *Shader, name: *u8, value : float) {

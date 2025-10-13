@@ -941,7 +941,7 @@ world_render :: (using world : *World, nests : float, window_clip : Box, pos_in_
 				pos_in_grid := get_pos_in_tilegrid(*world.tilegrid, it_index.x, it_index.y);
 				pos := vec_world_to_window(pos_in_grid, world, nests);
 				pos += pos_in_window;
-				draw_tilemap(entry.id, entry.slice, pos, scale);
+				draw_tilemap(entry.id, entry.slice, pos, scale, use_window_scale=false);
 			}
 		}
 	}
