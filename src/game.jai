@@ -497,6 +497,17 @@ MAX_ACTORS_PER_WORLD :: 1024;
 actor_guid := 0;
 active_world : *World;
 
+WORLD_NESTED_SCALE :: 0.5;
+WORLD_NESTED_SCALE_VEC :: Vector2.{WORLD_NESTED_SCALE, WORLD_NESTED_SCALE};
+SUBCLIP_SIZE_DEFAULT :: 64.; // needs to match body size of WorldEntrance
+SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
+SUBCLIP_OUTLINE_THICKNESS :: 8.;
+WORLD_NESTED_TIME :: 0.15;
+WORLD_TIME_PER_CYCLE :: 10.; // for the revolving outline marker
+WORLD_TRANSITION_TIME :: 0.25; 
+WORLD_TICK_NEST_MAX :: 10.;
+WORLD_RENDER_NEST_MAX :: 4.; // max num of nested subworlds to render
+
 world_init :: (level_name : string, depth := 0.) -> *World {
 	w : *World;
 	for * worlds {
@@ -861,18 +872,6 @@ world_tick :: (using world : *World, dt : float, nests := 0.) {
     	world_tick(it.child_world, pure_dt, nests+1);
     }
 }
-
-WORLD_NESTED_SCALE :: 0.5;
-WORLD_NESTED_SCALE_VEC :: Vector2.{WORLD_NESTED_SCALE, WORLD_NESTED_SCALE};
-SUBCLIP_SIZE_DEFAULT :: 64.; // needs to match body size of WorldEntrance
-SUBCLIP_SIZE_MAX :: 2000; //@TODO should be max(window_width, window_height);
-SUBCLIP_OUTLINE_THICKNESS :: 8.;
-WORLD_NESTED_TIME :: 0.15;
-WORLD_TIME_PER_CYCLE :: 10.; // for the revolving outline marker
-WORLD_TRANSITION_TIME :: 0.25; 
-WORLD_TICK_NEST_MAX :: 10.;
-WORLD_RENDER_NEST_MAX :: 4.; // max num of nested subworlds to render
-
 
 get_nest_scale :: (nests := 0.) -> float {
 	return pow(WORLD_NESTED_SCALE, nests);
@@ -2291,41 +2290,6 @@ G_YELLOW :: Vector4.{1, 0.925, 0.153, 1};
 G_ORANGE :: Vector4.{1, 0.639, 0, 1};
 G_ORANGE2 :: Vector4.{0.671, 0.322, 0.212, 1};
 G_ORANGE3 :: Vector4.{1, 0.8, 0.667, 1};
-
-
-
-//@CLEAN
-//@OLD
-//https://lospec.com/palette-list/cc-29
-//G_BLACK 		:: Vector4.{0.129, 0.129, 0.137, 1};
-//G_WHITE			:: Vector4.{0.949, 0.941, 0.898, 1};
-//G_GREY 			:: Vector4.{0.722, 0.71, 0.725, 1};
-//G_GREY2 		:: Vector4.{0.525, 0.506, 0.533, 1};
-//G_GREY3 		:: Vector4.{0.392, 0.388, 0.396, 1};
-//G_GREY3b	 	:: Vector4.{0.373, 0.333, 0.416, 1};
-//G_GREY4 		:: Vector4.{0.271, 0.267, 0.31, 1};
-//G_PURPLE	 	:: Vector4.{0.416, 0.325, 0.431, 1};
-//G_PURPLE2	 	:: Vector4.{0.294, 0.255, 0.345, 1};
-//G_PURPLE3 		:: Vector4.{0.208, 0.169, 0.259, 1};
-//G_BLUE	 		:: Vector4.{0.294, 0.502, 0.792, 1};
-//G_BLUE2 		:: Vector4.{0.263, 0.263, 0.416, 1};
-//G_BLUE3 		:: Vector4.{0.227, 0.22, 0.345, 1};
-//G_TEAL 			:: Vector4.{0.408, 0.761, 0.827, 1};
-//G_TEAL2 		:: Vector4.{0.337, 0.482, 0.475, 1};
-//G_GREEN 		:: Vector4.{0.635, 0.863, 0.78, 1};
-//G_GREEN2 		:: Vector4.{0.761, 0.827, 0.408, 1};
-//G_GREEN3 		:: Vector4.{0.541, 0.69, 0.376, 1};
-//G_GREEN4 		:: Vector4.{0.306, 0.345, 0.29, 1};
-//G_YELLOW 		:: Vector4.{0.929, 0.882, 0.62, 1};
-//G_YELLOW2 		:: Vector4.{0.482, 0.447, 0.263, 1};
-//G_YELLOW3 		:: Vector4.{0.698, 0.706, 0.494, 1};
-//G_ORANGE 		:: Vector4.{0.827, 0.627, 0.408, 1};
-//G_ORANGE2 		:: Vector4.{0.655, 0.482, 0.357, 1};
-//G_ORANGE3 		:: Vector4.{0.898, 0.808, 0.706, 1};
-//G_RED 			:: Vector4.{0.706, 0.322, 0.322, 1};
-//G_RED2	 		:: Vector4.{0.502, 0.286, 0.227, 1};
-//G_RED3 			:: Vector4.{0.929, 0.784, 0.769, 1};
-//G_PINK	 		:: Vector4.{0.812, 0.541, 0.796, 1};
 
 
 #load "engine.jai";
