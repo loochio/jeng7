@@ -45,7 +45,7 @@ shader_init :: () {
 }
 
 shader_load :: (shader : *Shader) {
-	path := tprint("src/shaders/%", shader.filename);
+	path := tprint("%/shaders/%", asset_path, shader.filename);
 	buffer, success := read_entire_file(path);
 	defer free(buffer);
 

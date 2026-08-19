@@ -1,5 +1,6 @@
 // build.jai 
 // 13 Sept 2025
+// compiled with jai v0.2.017 (22 Aug 2025)
 
 EXE_NAME := "GameF";
 OUTPUT_PATH := "";

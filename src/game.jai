@@ -1583,7 +1583,7 @@ spawn :: (world : *World, type : ActorType, pos := Vector2.{0,0}) -> *Actor{
 	return spawn(world, *spawner);
 }
 
-spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor{
+spawn :: (world : *World, spawner : *ActorSpawner) -> *Actor {
 	a := actor_alloc(world, spawner.type);
 	a.sprite = get_sprite(a.type);
 	a.position = spawner.position;
